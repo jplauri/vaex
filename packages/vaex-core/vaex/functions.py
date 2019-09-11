@@ -18,7 +18,7 @@ scopes = {
     'td': vaex.expression.TimeDelta
 }
 
-def register_function(scope=None, as_property=False, name=None, on_expression=True):
+def register_function(scope=None, as_property=False, name=None, on_expression=True, nep13=False, nep18=False):
     """Decorator to register a new function with vaex.
 
     If on_expression is True, the function will be available as a method on an
@@ -71,7 +71,12 @@ def register_function(scope=None, as_property=False, name=None, on_expression=Tr
                         args = (self, ) + args
                         return lazy_func(*args, **kwargs)
                     return functools.wraps(function)(wrapper)
-                setattr(vaex.expression.Expression, name, closure())
+                c = closure()
+                if nep13:
+                    vaex.expression.nep13_method(getattr(np, name))(c)
+                if nep18:
+                    vaex.expression.nep18_method(getattr(np, name))(c)
+                setattr(vaex.expression.Expression, name, c)
         vaex.expression.expression_namespace[prefix + name] = f
         return f  # we leave the original function as is
     return wrapper
@@ -110,6 +115,9 @@ searchsorted
 isfinite
 digitize
 searchsorted
+power
+sign
+absolute
 """.strip().split()]
 for name, numpy_name in numpy_function_mapping:
     if not hasattr(np, numpy_name):
@@ -123,7 +131,7 @@ for name, numpy_name in numpy_function_mapping:
         function = f()
         function.__doc__ = "Lazy wrapper around :py:data:`numpy.%s`" % name
 
-        register_function(name=name)(function)
+        register_function(name=name, nep13=True, nep18=True)(function)
 
 
 @register_function()
@@ -206,7 +214,7 @@ def notmissing(x):
     return ~ismissing(x)
 
 
-@register_function()
+@register_function(nep13=True, nep18=True)
 def isnan(x):
     """Returns an array where there are NaN values"""
     if isinstance(x, np.ndarray):

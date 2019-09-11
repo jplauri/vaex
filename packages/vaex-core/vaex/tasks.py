@@ -330,7 +330,6 @@ class TaskAggregations(Task):
 
     def add_aggregation_operation(self, aggregator_descriptor):
         task = Task(self.df, [], "--")
-
         def chain_reject(x):
             task.reject(x)
             return x
@@ -344,7 +343,7 @@ class TaskAggregations(Task):
         # it is up the the executor to remove duplicate expressions
         self.expressions_all.extend(aggregator_descriptor.expressions)
         # TODO: optimize/remove?
-        self.dtypes = {expr: self.df.dtype(expr) for expr in self.expressions_all}
+        self.dtypes = {expr: self.df.dtype_evaluate(expr) for expr in self.expressions_all}
         return task
 
     def check(self):

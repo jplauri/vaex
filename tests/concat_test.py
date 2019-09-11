@@ -58,7 +58,7 @@ def test_concat_arrow_strings():
     df1 = vaex.from_arrays(x=vaex.string_column(['aap', 'noot', 'mies']))
     df2 = vaex.from_arrays(x=vaex.string_column(['a', 'b', 'c']))
     df = vaex.concat([df1, df2])
-    assert df.dtype('x') == df1.dtype('x')
+    assert df.dtype_evaluate('x') == df1.dtype_evaluate('x')
     assert df.x.tolist() == ['aap', 'noot', 'mies', 'a', 'b', 'c']
 
 

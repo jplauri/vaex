@@ -182,6 +182,30 @@ class StringOperationsPandas(object):
         self.expression = expression
 
 
+# implementing nep18: https://numpy.org/neps/nep-0018-array-function-protocol.html
+_nep18_method_mapping = {}  # maps from numpy function to an Expression method
+def nep18_method(numpy_function):
+    def decorator(f):
+        _nep18_method_mapping[numpy_function] = f
+        return f
+    return decorator
+
+# implementing nep13: https://numpy.org/neps/nep-0013-ufunc-overrides.html
+_nep13_method_mapping = {}  # maps from numpy function to an Expression method
+def nep13_method(numpy_function):
+    def decorator(f):
+        _nep13_method_mapping[numpy_function] = f
+        return f
+    return decorator
+
+
+def nep13_and_18_method(numpy_function):
+    def decorator(f):
+        _nep13_method_mapping[numpy_function] = f
+        _nep18_method_mapping[numpy_function] = f
+        return f
+    return decorator
+
 class Expression(with_metaclass(Meta)):
     """Expression class"""
     def __init__(self, ds, expression, ast=None):
@@ -244,6 +268,11 @@ class Expression(with_metaclass(Meta)):
             self._ast = None
 
 
+    def __bool__(self):
+        # this allows expressions to be used for truthy testing
+        # if we don't do this, __len__ gets called
+        return True
+
     @property
     def df(self):
         # lets gradually move to using .df
@@ -251,7 +280,7 @@ class Expression(with_metaclass(Meta)):
 
     @property
     def dtype(self):
-        return self.ds.dtype(self.expression)
+        return self.ds.dtype_evaluate(self.expression)
 
     @property
     def shape(self):
@@ -287,6 +316,58 @@ class Expression(with_metaclass(Meta)):
         """
         import pandas as pd
         return pd.Series(self.values)
+
+    def __len__(self):
+        return len(self.ds)
+
+    @nep18_method(np.zeros_like)
+    def _zeros_like(self):
+        return Expression(self.ds, '(0 * (%s))' % self.expression)
+
+    @nep18_method(np.nanmin)
+    def _nanmin(self, axis=None):
+        assert axis in [0, None]
+        return self.min()
+
+    @nep18_method(np.nanmax)
+    def _nanmax(self, axis=None):
+        assert axis in [0, None]
+        return self.max()
+
+    def __array_function__(self, func, types, args, kwargs):
+        method = _nep18_method_mapping.get(func)
+        if method is None:
+            return NotImplemented
+        assert args[0] is self
+        return method(*args, **kwargs)
+
+    def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
+        method = _nep13_method_mapping.get(ufunc)
+        if method is None:
+            return NotImplemented
+        if len(inputs) > 1 and inputs[1] is self:
+            assert len(inputs) == 2  # TODO: check if arguments can be swapped? how?
+            inputs = inputs[::-1]
+        if inputs[0] is not self:
+            return NotImplemented
+        # assert inputs[0] is self or inputs[1] is self
+        return method(*inputs, **kwargs)
+
+    def __setitem__(self, expr, value):
+        # TODO: check that value is compatible with this dataframe
+        # e.g. we should not allow:
+        #  >>> x[x>0] = x[x<0]
+        self.expression = 'where(%s, %s, %s)' % (expr, value, self.expression)
+
+    @nep13_method(np.nansum)
+    @nep18_method(np.nansum)
+    def nansum(self, axis=None):
+        assert axis in [0, None]
+        # TODO: smarter upcasting
+        if self.dtype == np.bool:
+            return self.astype('int64').sum()
+        else:
+            return self.sum()
 
     def __getitem__(self, slice):
         return self.ds[slice][self.expression]
@@ -490,12 +571,26 @@ class Expression(with_metaclass(Meta)):
         kwargs['expression'] = self.expression
         return self.ds.sum(**kwargs)
 
+    @nep13_and_18_method(np.sum)
+    def _sum(self, axis=None):
+        assert axis in [0, None]
+        # TODO: smarter upcasting
+        if self.dtype == np.bool:
+            return self.astype('int64').sum()
+        else:
+            return self.sum()
+
     def mean(self, binby=[], limits=None, shape=default_shape, selection=False, delay=False, progress=None):
         '''Shortcut for ds.mean(expression, ...), see `Dataset.mean`'''
         kwargs = dict(locals())
         del kwargs['self']
         kwargs['expression'] = self.expression
         return self.ds.mean(**kwargs)
+
+    @nep13_and_18_method(np.mean)
+    def _mean(self, axis=None):
+        assert axis in [0, None]
+        return self.mean()
 
     def std(self, binby=[], limits=None, shape=default_shape, selection=False, delay=False, progress=None):
         '''Shortcut for ds.std(expression, ...), see `Dataset.std`'''
@@ -510,6 +605,12 @@ class Expression(with_metaclass(Meta)):
         del kwargs['self']
         kwargs['expression'] = self.expression
         return self.ds.var(**kwargs)
+
+    @nep13_and_18_method(np.nanvar)
+    def _nanvar(self, axis=None):
+        assert axis in [0, None]
+        return self.var()
+
 
     def minmax(self, binby=[], limits=None, shape=default_shape, selection=False, delay=False, progress=None):
         '''Shortcut for ds.minmax(expression, ...), see `Dataset.minmax`'''
@@ -650,6 +751,9 @@ class Expression(with_metaclass(Meta)):
         """
         return len(self.unique(dropna=dropna, dropnan=dropnan, dropmissing=dropmissing, selection=selection, delay=delay))
 
+    def any(self):
+        return self.astype('int').sum() != 0
+
     def countna(self):
         """Returns the number of Not Availiable (N/A) values in the expression.
         This includes missing values and np.nan values.
@@ -705,7 +809,7 @@ class Expression(with_metaclass(Meta)):
             all_vars = self.ds.get_column_names(virtual=True, strings=True, hidden=True) + list(self.ds.variables.keys())
             vaex.expresso.validate_expression(expression, all_vars, funcs, names)
             names = list(set(names))
-            types = ", ".join(str(self.ds.dtype(name)) + "[]" for name in names)
+            types = ", ".join(str(self.ds.dtype_evaluate(name)) + "[]" for name in names)
             argstring = ", ".join(names)
             code = '''
 from numpy import *
@@ -938,6 +1042,14 @@ def f({0}):
         return self.ds.is_masked(self.expression)
 
 
+# these methods are added at runtime by the metaclass
+nep13_and_18_method(np.invert)(Expression.__invert__)
+nep13_and_18_method(np.subtract)(Expression.__sub__)
+nep13_and_18_method(np.true_divide)(Expression.__truediv__)
+nep13_and_18_method(np.multiply)(Expression.__mul__)
+nep13_and_18_method(np.add)(Expression.__add__)
+
+
 class FunctionSerializable(object):
     pass
 
@@ -1029,7 +1141,7 @@ class FunctionSerializableJit(FunctionSerializable):
         # TODO: can we do the above using the Expressio API?s
 
         arguments = list(set(names))
-        argument_dtypes = [df.dtype(argument) for argument in arguments]
+        argument_dtypes = [df.dtype_evaluate(argument) for argument in arguments]
         return_dtype = df[expression].dtype
         return cls(str(expression), arguments, argument_dtypes, return_dtype, verbose, compile=compile)
 
