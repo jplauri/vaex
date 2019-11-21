@@ -230,3 +230,27 @@ from .transformations import LabelEncoder, OneHotEncoder, FrequencyEncoder
 from .transformations import CycleTransformer
 from .transformations import BayesianTargetEncoder
 from .transformations import WeightOfEvidenceEncoder
+
+import contextlib
+@contextlib.contextmanager
+def relax_sklearn_check():
+    import sklearn.preprocessing.data
+    import sklearn.preprocessing._encoders
+    import sklearn.preprocessing.data
+    import sklearn.preprocessing._encoders
+    import sklearn.decomposition.pca
+    import numpy as np
+    version = tuple(map(int, sklearn.__version__.split('.')[:2]))
+    if version < (0,22):
+        pca_linalg = sklearn.decomposition.pca.linalg
+        sklearn.decomposition.pca.linalg = np.linalg
+
+        # sklearn.decomposition.pca.linalg = numpy.linalg
+        modules = [sklearn.preprocessing.data, sklearn.preprocessing._encoders, sklearn.preprocessing.base, sklearn.decomposition.pca, sklearn.decomposition.base]
+        old_check_arrays = {module: getattr(module, 'check_array') for module in modules}
+        for module in modules:
+            module.check_array = lambda x, *args, **kwargs: x
+    yield
+    sklearn.decomposition.pca.linalg = pca_linalg
+    for module in modules:
+       module.check_array = old_check_arrays[module]

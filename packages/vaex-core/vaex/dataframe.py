@@ -6,6 +6,7 @@ import math
 import time
 import itertools
 import functools
+import contextlib
 import collections
 import sys
 import platform
@@ -44,7 +45,6 @@ except ImportError:
     from urlparse import urlparse
 
 _DEBUG = os.environ.get('VAEX_DEBUG', False)  # extra sanify checks that might hit performance
-_allow_array_casting = True
 
 DEFAULT_REPR_FORMAT = 'plain'
 FILTER_SELECTION_NAME = '__filter__'
@@ -247,6 +247,8 @@ class DataFrame(object):
         # weak refs of expression that we keep to rewrite expressions
         self._expressions = []
         self._transposed = False
+        self._allow_array_casting = True
+
 
         self.local = threading.local()
         # a check to avoid nested aggregator calls, which make stack traces very difficult
@@ -5206,7 +5208,6 @@ class DataFrameLocal(DataFrame):
         result = method(*args, **kwargs)
         return result
 
-
     def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
         method = _nep13_method_mapping.get(ufunc)
         if method is None:
@@ -5239,6 +5240,11 @@ class DataFrameLocal(DataFrame):
         # assert inputs[0] is self or inputs[1] is self
         return method(*inputs, **kwargs)
 
+    @nep18_method(np.mean)
+    def _np_mean(self, axis=None):
+        assert axis in [0, None]
+        return self.mean(self.get_column_names())
+
     @nep18_method(np.dot)
     def _dot(self, b):
         b = np.asarray(b)
@@ -5251,7 +5257,10 @@ class DataFrameLocal(DataFrame):
         for name in names:
             df._hide_column(name)
         for i in range(N):
-            df[output_names[i]] = sum([columns[j] * b[j,i] for j in range(b.shape[0])])
+            def dot_product(a, b):
+                products = ['%s * %s' % (ai, bi) for ai, bi in zip(a, b)]
+                return ' + '.join(products)
+            df[output_names[i]] = dot_product(columns, b[:,i])
         return df
 
     @nep18_method(np.may_share_memory)
@@ -5287,7 +5296,7 @@ class DataFrameLocal(DataFrame):
 
         If any of the columns contain masked arrays, the masks are ignored (i.e. the masked elements are returned as well).
         """
-        if not _allow_array_casting:
+        if not self._allow_array_casting:
             raise RuntimeError('casting a dataframe to an array is explicitly disabled')
         if dtype is None:
             dtype = np.float64
@@ -5302,6 +5311,12 @@ class DataFrameLocal(DataFrame):
             return np.ma.array(chunks, dtype=dtype).T
         else:
             return np.array(chunks, dtype=dtype).T
+
+    @contextlib.contextmanager
+    def array_casting_disabled(self):
+        self._allow_array_casting = True
+        yield
+        self._allow_array_casting = True
 
     @vaex.utils.deprecated('use DataFrame.join(other)')
     def _hstack(self, other, prefix=None):

@@ -12,29 +12,8 @@ import sklearn.decomposition.pca
 import numpy.linalg
 import dask
 import dask.array as da
+from vaex.ml import relax_sklearn_check
 
-@contextlib.contextmanager
-def relax_sklearn_check():
-    version = tuple(map(int, sklearn.__version__.split('.')[:2]))
-    if version < (0,22):
-        pca_linalg = sklearn.decomposition.pca.linalg
-        sklearn.decomposition.pca.linalg = np.linalg
-
-        # sklearn.decomposition.pca.linalg = numpy.linalg
-        modules = [sklearn.preprocessing.data, sklearn.preprocessing._encoders, sklearn.preprocessing.base, sklearn.decomposition.pca, sklearn.decomposition.base]
-        old_check_arrays = {module: getattr(module, 'check_array') for module in modules}
-        for module in modules:
-            module.check_array = lambda x, *args, **kwargs: x
-    yield
-    sklearn.decomposition.pca.linalg = pca_linalg
-    for module in modules:
-       module.check_array = old_check_arrays[module]
-
-@contextlib.contextmanager
-def no_array_casting():
-    vaex.dataframe._allow_array_casting = True
-    yield
-    vaex.dataframe._allow_array_casting = True
 
 @pytest.fixture
 def df():
@@ -47,6 +26,13 @@ def test_zeros_like(df):
     z = np.zeros_like(df.x)
     assert z.tolist() == [0] * 10
 
+def test_mean(df):
+    means = np.mean(df)
+    assert means[0] == df.x.mean()
+
+def test_ufuncs(df):
+    dfl = np.log(df)
+    dfl.x.tolist() == df.x.log().tolist()
 
 def test_dot(df):
     x = df.x.values
@@ -58,7 +44,7 @@ def test_dot(df):
     assert np.all(Y[:,1] == y)
 
     # not repeat with vaex
-    with relax_sklearn_check(), no_array_casting():
+    with relax_sklearn_check(), df.array_casting_disabled():
         df_dot = np.dot(df, [[1, 0], [0, 1]])
     Yv = np.array(df_dot)
     assert np.all(Yv[:,0] == x)
@@ -69,7 +55,7 @@ def test_dot(df):
     assert np.all(Y[:,0] == x - y)
     assert np.all(Y[:,1] == y + x)
 
-    with relax_sklearn_check(), no_array_casting():
+    with relax_sklearn_check(), df.array_casting_disabled():
         df_dot = np.dot(df, [[1, 1], [-1, 1]])
     Yv = np.array(df_dot)
     assert np.all(Yv[:,0] == x - y)
@@ -79,7 +65,7 @@ def test_dot(df):
     Y = X.dot([[1], [-1]])
     assert np.all(Y[:,0] == x - y)
 
-    with relax_sklearn_check(), no_array_casting():
+    with relax_sklearn_check(), df.array_casting_disabled():
         df_dot = np.dot(df, [[1], [-1]])
     Yv = np.array(df_dot)
     assert np.all(Yv[:,0] == x - y)
@@ -88,7 +74,7 @@ def test_dot(df):
 
 def test_sklearn_min_max_scalar(df):
     from sklearn.preprocessing import MinMaxScaler
-    with relax_sklearn_check(), no_array_casting():
+    with relax_sklearn_check(), df.array_casting_disabled():
         scaler = MinMaxScaler()
         scaler.fit(df)
 
@@ -100,7 +86,7 @@ def test_sklearn_min_max_scalar(df):
 
 def test_sklearn_standard_scaler(df):
     from sklearn.preprocessing import StandardScaler
-    with relax_sklearn_check(), no_array_casting():
+    with relax_sklearn_check(), df.array_casting_disabled():
         scaler = StandardScaler()
         scaler.fit(df)
 
@@ -112,7 +98,7 @@ def test_sklearn_standard_scaler(df):
 
 def test_sklearn_power_transformer(df):
     from sklearn.preprocessing import PowerTransformer
-    with relax_sklearn_check(), no_array_casting():
+    with relax_sklearn_check(), df.array_casting_disabled():
         scaler = PowerTransformer(standardize=False)
         scaler.fit(df)
 
@@ -126,7 +112,7 @@ def test_sklearn_power_transformer(df):
 def test_sklearn_pca(df):
     from sklearn.decomposition import PCA
     for n in [1,2]:
-        with relax_sklearn_check(), no_array_casting():
+        with relax_sklearn_check(), df.array_casting_disabled():
             scaler = PCA(n_components=n)
             scaler.fit(df)
             dfc = df.copy()
