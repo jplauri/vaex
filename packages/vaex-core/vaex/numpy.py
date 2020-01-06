@@ -276,6 +276,7 @@ for numpy_name in aggregates_functions:
                 df = self
             results = []
             forward_kwargs = kwargs.copy()
+            forward_kwargs['delay'] = True  # we do all aggregates in 1 pass
             if 'axis' in kwargs:
                 if kwargs['axis'] == 0 and not self._transposed:
                     pass  # this is fine
@@ -285,7 +286,7 @@ for numpy_name in aggregates_functions:
                     raise ValueError("not supported: numpy.%s with kwargs %r" % (numpy_name, kwargs))                
             for name in df.get_column_names():
                 method = vaex.expression._nep18_method_mapping[numpy_function]
-                results.append(method(*(df[name],) + args, **forward_kwargs, delay=True))
+                results.append(method(*(df[name],) + args, **forward_kwargs))
             df.execute()
             results = [k.get() for k in results]
             # TODO: support axis argument
