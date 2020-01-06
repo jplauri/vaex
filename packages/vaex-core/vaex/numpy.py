@@ -285,7 +285,7 @@ for numpy_name in aggregates_functions:
                     raise ValueError("not supported: numpy.%s with kwargs %r" % (numpy_name, kwargs))                
             for name in df.get_column_names():
                 method = vaex.expression._nep18_method_mapping[numpy_function]
-                results.append(method(*(df[name], *args), **forward_kwargs, delay=True))
+                results.append(method(*(df[name],) + args, **forward_kwargs, delay=True))
             df.execute()
             results = [k.get() for k in results]
             # TODO: support axis argument
