@@ -22,17 +22,83 @@ def df():
     df = vaex.from_arrays(x=x, y=y)
     return df
 
+
+@pytest.mark.parametrize("transpose", [True, False])
+def test_basic(df, transpose):
+    A = np.array(df)
+    if transpose:
+        A = A.T
+        df = df.T
+    assert A.shape == df.shape == df.numpy.shape
+    assert A.dtype == df.dtype
+    assert A.ndim == df.ndim == 2
+    assert len(A) == len(A)
+
+
+def test_binary_scalar(df):
+    x = df.x.values
+    y = df.y.values
+    x2 = x + 3
+    y2 = y + 3
+    assert (df + 3).x.tolist() == x2.tolist()
+    assert (df + 3).y.tolist() == y2.tolist()
+    assert (df.T + 3).df.x.tolist() == x2.tolist()
+    assert (df.T + 3).df.y.tolist() == y2.tolist()
+
+
+def test_binary_array(df):
+    A = np.array(df)
+    x = df.x.values
+    A2 = A.T + x
+    df2 = (df.T + x).df
+    assert np.array(df2).tolist() == A2.T.tolist()
+    assert np.array(df2.T).tolist() == A2.tolist()
+
+
+def test_aggregates(df):
+    A = np.array(df)
+    a = np.nanmax(A)
+    passes = df.executor.passes
+    assert a.tolist() == np.nanmax(df).tolist()
+    assert df.executor.passes == passes + 1, "aggregation should be done in 1 pass"
+
+    a = np.nanmax(A, axis=0)
+    assert a.tolist() == np.nanmax(df, axis=0).tolist()
+    a = np.nanmax(A.T, axis=1)
+    assert a.tolist() == np.nanmax(df.T, axis=1).tolist()
+
+
+@pytest.mark.xfail
+def test_aggregates_columnwise(df):
+    # similar to test_aggregates, but now it should go over the columns
+    A = np.array(df)
+    assert isinstance(np.nanmax(df, axis=1), vaex.Expression)
+    assert a.tolist() == np.nanmax(df, axis=1).tolist()
+    a = np.nanmax(A.T, axis=0)
+    assert a.tolist() == np.nanmax(df.T, axis=0).tolist()
+
+
 def test_zeros_like(df):
     z = np.zeros_like(df.x)
     assert z.tolist() == [0] * 10
+
 
 def test_mean(df):
     means = np.mean(df)
     assert means[0] == df.x.mean()
 
+
 def test_ufuncs(df):
-    dfl = np.log(df)
-    dfl.x.tolist() == df.x.log().tolist()
+    assert np.log(df).x.tolist() == df.x.log().tolist()
+    assert np.log(df.T).df.x.tolist() == df.x.log().tolist()
+
+
+def test_unary(df):
+    assert (-df).x.tolist() == (-df.x.values).tolist()
+    assert (np.negative(df)).x.tolist() == (-df.x.values).tolist()
+    assert (-df.T).df.x.tolist() == (-df.x.values).tolist()
+    assert (np.negative(df.T)).df.x.tolist() == (-df.x.values).tolist()
+
 
 def test_dot(df):
     x = df.x.values

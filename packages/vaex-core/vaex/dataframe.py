@@ -151,32 +151,6 @@ def _hidden(meth):
     return meth
 
 
-# implementing nep18: https://numpy.org/neps/nep-0018-array-function-protocol.html
-_nep18_method_mapping = {}  # maps from numpy function to an Expression method
-def nep18_method(numpy_function):
-    def decorator(f):
-        _nep18_method_mapping[numpy_function] = f
-        return f
-    return decorator
-
-
-# implementing nep13: https://numpy.org/neps/nep-0013-ufunc-overrides.html
-_nep13_method_mapping = {}  # maps from numpy function to an Expression method
-def nep13_method(numpy_function):
-    def decorator(f):
-        _nep13_method_mapping[numpy_function] = f
-        return f
-    return decorator
-
-
-def nep13_and_18_method(numpy_function):
-    def decorator(f):
-        _nep13_method_mapping[numpy_function] = f
-        _nep18_method_mapping[numpy_function] = f
-        return f
-    return decorator
-
-
 class DataFrame(object):
     """All local or remote datasets are encapsulated in this class, which provides a pandas
     like API to your dataset.
@@ -4764,6 +4738,37 @@ class DataFrame(object):
             self[column]._graphviz(dot=dot)
         return dot
 
+# we forward binary and unary operators to numpy, which will be dispatched to
+# the nep13/nep18 handlers
+for op in vaex.expression._binary_ops:
+    name = op['name']
+    numpy_name = op.get('numpy_name', name)
+    # TODO: decide what to do with equals
+    if name in ['contains', 'is', 'is_not', 'eq']:
+        continue
+    numpy_function = getattr(np, numpy_name)
+    assert numpy_function, 'numpy does not have {}'.format(numpy_name)
+    def closure(numpy_function=numpy_function, numpy_name=numpy_name):
+        def f(a, b):
+            return numpy_function(a.numpy, b)
+        return f
+
+    dundername = '__{}__'.format(name)
+    setattr(DataFrame, dundername, closure())
+
+
+for op in vaex.expression._unary_ops:
+    name = op['name']
+    numpy_name = op.get('numpy_name', name)
+    numpy_function = getattr(np, numpy_name)
+    assert numpy_function, 'numpy does not have {}'.format(name)
+    def closure(numpy_function=numpy_function):
+        def f(a):
+            return numpy_function(a)
+        return f
+
+    dundername = '__{}__'.format(name)
+    setattr(DataFrame, dundername, closure())
 
     def _get_task_agg(self, grid):
         new_task = False
@@ -5159,132 +5164,25 @@ class DataFrameLocal(DataFrame):
 
     @property
     def shape(self):
-        if self._transposed:
-            return (len(self.get_column_names()), len(self))
-        else:
-            return (len(self), len(self.get_column_names()))
+        return (len(self), len(self.get_column_names()))
 
     @property
     def T(self):
-        df = self.copy()
-        df._transposed = not self._transposed
-        return df
+        return self.numpy.T
 
     @property
     def dtype(self):
-        dtypes = [self[k].dtype for k in self.get_column_names()]
-        assert all([dtypes[0] == dtype for dtype in dtypes])
-        return dtypes[0]
+        return self.numpy.dtype
 
     @property
     def ndim(self):
-        return 2
-
-    def __invert__(self):
-        return np.invert(self)  # dispatch to __array_function or __array_ufunc__
+        return self.numpy.ndim
 
     def __array_function__(self, func, types, args, kwargs):
-        method = _nep18_method_mapping.get(func)
-        if method is None:
-            def dispatch_to_expression(name):
-                expression = self[name]
-                forward_args = (expression,) + args[1:]
-                return expression.__array_function__(func, types, forward_args, kwargs)
-
-            results = [dispatch_to_expression(name) for name in self.get_column_names()]
-            if any([k is NotImplemented for k in results]):
-                raise TypeError("no implementation found for %r on types that implement __array_function__: %r" % (func, types))
-            if isinstance(results[0], Expression):
-                # ufunc case etc
-                df = self.copy()
-                for i, name in enumerate(self.get_column_names()):
-                    df[name] = results[i]
-                return df
-            else:
-                # aggregrates
-                return np.array(results)
-            # return NotImplemented
-        assert args[0] is self
-        result = method(*args, **kwargs)
-        return result
+        return self.numpy.__array_function__(func, types, args, kwargs)
 
     def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
-        method = _nep13_method_mapping.get(ufunc)
-        if method is None:
-            assert inputs[0] is self
-            def dispatch_to_expression(name, i):
-                expression = self[name]
-                forward_args = (expression,) + inputs[1:]
-                if len(forward_args) > 1 and isinstance(forward_args[1], np.ndarray):
-                    ar = inputs[1]
-                    if len(ar) == len(self.get_column_names()):  # poor man's broadcasting
-                        forward_args = (forward_args[0],) + (forward_args[1][i], ) + forward_args[2:]
-                return expression.__array_ufunc__(ufunc, method, *forward_args, **kwargs)
-
-            results = [dispatch_to_expression(name, i) for i, name in enumerate(self.get_column_names())]
-            if any([k is NotImplemented for k in results]):
-                raise TypeError("no implementation found for %r on types that implement __array_ufunc__: %r" % (ufunc, method))
-            if isinstance(results[0], Expression):
-                df = self.copy()
-                for i, name in enumerate(self.get_column_names()):
-                    df[name] = results[i]
-                return df
-            else:
-                return np.array(results)
-            return NotImplemented
-        if len(inputs) > 1 and inputs[1] is self:
-            assert len(inputs) == 2  # TODO: check if arguments can be swapped? how?
-            inputs = inputs[::-1]
-        if inputs[0] is not self:
-            return NotImplemented
-        # assert inputs[0] is self or inputs[1] is self
-        return method(*inputs, **kwargs)
-
-    @nep18_method(np.mean)
-    def _np_mean(self, axis=None):
-        assert axis in [0, None]
-        return self.mean(self.get_column_names())
-
-    @nep18_method(np.dot)
-    def _dot(self, b):
-        b = np.asarray(b)
-        assert b.ndim == 2
-        N = b.shape[1]
-        df = self.copy()
-        names = df.get_column_names()
-        output_names = ['c'+str(i) for i in range(N)]
-        columns = [df[names[j]] for j in range(b.shape[0])]
-        for name in names:
-            df._hide_column(name)
-        for i in range(N):
-            def dot_product(a, b):
-                products = ['%s * %s' % (ai, bi) for ai, bi in zip(a, b)]
-                return ' + '.join(products)
-            df[output_names[i]] = dot_product(columns, b[:,i])
-        return df
-
-    @nep18_method(np.may_share_memory)
-    def _may_share_memory(self, b):
-        return True  # be conservative
-
-    @nep18_method(np.linalg.svd)
-    def _np_linalg_svd(self, full_matrices=True):
-        import dask.array as da
-        import dask
-        X = self.to_dask_array()
-        # TODO: we ignore full_matrices
-        u, s, v = da.linalg.svd(X)#, full_matrices=full_matrices)
-        u, s, v = dask.compute(u, s, v)
-        return u, s, v
-
-    @nep18_method(np.linalg.qr)
-    def _np_linalg_qr(self):
-        import dask.array as da
-        import dask
-        X = self.to_dask_array()
-        result = da.linalg.qr(X)
-        result = dask.compute(*result)
-        return result
+        return self.numpy.__array_ufunc__(ufunc, method, *inputs, **kwargs)
 
     def __array__(self, dtype=None, parallel=True):
         """Gives a full memory copy of the DataFrame into a 2d numpy array of shape (n_rows, n_columns).

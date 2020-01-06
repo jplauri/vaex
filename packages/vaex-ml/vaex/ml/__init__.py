@@ -234,23 +234,34 @@ from .transformations import WeightOfEvidenceEncoder
 import contextlib
 @contextlib.contextmanager
 def relax_sklearn_check():
-    import sklearn.preprocessing.data
-    import sklearn.preprocessing._encoders
-    import sklearn.preprocessing.data
-    import sklearn.preprocessing._encoders
+    """Context manager that patches scikit-learn at runtime to allow it to work with vaex natively
+    
+    Currently working/tested
+
+     * StandardScaler
+     * MinMaxScaler     
+     * PowerTransformer
+     * PCA
+
+    Example: TODO
+    """
     import sklearn.decomposition.pca
     import numpy as np
-    version = tuple(map(int, sklearn.__version__.split('.')[:2]))
-    if version < (0,22):
-        pca_linalg = sklearn.decomposition.pca.linalg
-        sklearn.decomposition.pca.linalg = np.linalg
+    import sys
+    # version = tuple(map(int, sklearn.__version__.split('.')[:2]))
 
-        # sklearn.decomposition.pca.linalg = numpy.linalg
-        modules = [sklearn.preprocessing.data, sklearn.preprocessing._encoders, sklearn.preprocessing.base, sklearn.decomposition.pca, sklearn.decomposition.base]
-        old_check_arrays = {module: getattr(module, 'check_array') for module in modules}
-        for module in modules:
-            module.check_array = lambda x, *args, **kwargs: x
+    pca_linalg = sklearn.decomposition.pca.linalg
+    sklearn.decomposition.pca.linalg = np.linalg
+
+    sklearn_modules = [mod for name, mod in sys.modules.items() if name.startswith("sklearn")]
+    previous_check_arrays = {}
+    def dummy(X, *args, **kwargs):
+        return X
+    for module in sklearn_modules:
+        if hasattr(module, 'check_array'):
+            previous_check_arrays[module] = module.check_array
+            module.check_array = dummy
     yield
     sklearn.decomposition.pca.linalg = pca_linalg
-    for module in modules:
-       module.check_array = old_check_arrays[module]
+    for module, check_array in previous_check_arrays.items():
+       module.check_array = previous_check_arrays[module]

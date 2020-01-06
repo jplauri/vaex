@@ -44,29 +44,29 @@ expression_namespace['nan'] = np.nan
 _binary_ops = [
     dict(code="+", name='add', op=operator.add),
     dict(code="in", name='contains', op=operator.contains),
-    dict(code="/", name='truediv', op=operator.truediv),
-    dict(code="//", name='floordiv', op=operator.floordiv),
-    dict(code="&", name='and', op=operator.and_),
-    dict(code="^", name='xor', op=operator.xor),
+    dict(code="/", name='truediv', op=operator.truediv, numpy_name='true_divide'),
+    dict(code="//", name='floordiv', op=operator.floordiv, numpy_name='floor_divide'),
+    dict(code="&", name='and', op=operator.and_, numpy_name='bitwise_and'),
+    dict(code="^", name='xor', op=operator.xor, numpy_name='bitwise_xor'),
 
-    dict(code="|", name='or', op=operator.or_),
-    dict(code="**", name='pow', op=operator.pow),
+    dict(code="|", name='or', op=operator.or_, numpy_name='bitwise_or'),
+    dict(code="**", name='pow', op=operator.pow, numpy_name='power'),
     dict(code="is", name='is', op=operator.is_),
     dict(code="is not", name='is_not', op=operator.is_not),
 
-    dict(code="<<", name='lshift', op=operator.lshift),
+    dict(code="<<", name='lshift', op=operator.lshift, numpy_name='left_shift'),
     dict(code="%", name='mod', op=operator.mod),
-    dict(code="*", name='mul', op=operator.mul),
+    dict(code="*", name='mul', op=operator.mul, numpy_name='multiply'),
 
-    dict(code=">>", name='rshift', op=operator.rshift),
-    dict(code="-", name='sub', op=operator.sub),
+    dict(code=">>", name='rshift', op=operator.rshift, numpy_name='right_shift'),
+    dict(code="-", name='sub', op=operator.sub, numpy_name='subtract'),
 
-    dict(code="<", name='lt', op=operator.lt),
-    dict(code="<=", name='le', op=operator.le),
-    dict(code="==", name='eq', op=operator.eq),
-    dict(code="!=", name='ne', op=operator.ne),
-    dict(code=">=", name='ge', op=operator.ge),
-    dict(code=">", name='gt', op=operator.gt),
+    dict(code="<", name='lt', op=operator.lt, numpy_name='less'),
+    dict(code="<=", name='le', op=operator.le, numpy_name='less_equal'),
+    dict(code="==", name='eq', op=operator.eq, numpy_name='equal'),
+    dict(code="!=", name='ne', op=operator.ne, numpy_name='not_equal'),
+    dict(code=">=", name='ge', op=operator.ge, numpy_name='greater_equal'),
+    dict(code=">", name='gt', op=operator.gt, numpy_name='greater'),
 ]
 if hasattr(operator, 'div'):
     _binary_ops.append(dict(code="/", name='div', op=operator.div))
@@ -77,8 +77,8 @@ reversable = 'add sub mul matmul truediv floordiv mod divmod pow lshift rshift a
 
 _unary_ops = [
     dict(code="~", name='invert', op=operator.invert),
-    dict(code="-", name='neg', op=operator.neg),
-    dict(code="+", name='pos', op=operator.pos),
+    dict(code="-", name='neg', op=operator.neg, numpy_name='negative'),
+    dict(code="+", name='pos', op=operator.pos, numpy_name='positive'),
 ]
 
 
@@ -325,14 +325,14 @@ class Expression(with_metaclass(Meta)):
         return Expression(self.ds, '(0 * (%s))' % self.expression)
 
     @nep18_method(np.nanmin)
-    def _nanmin(self, axis=None):
+    def _nanmin(self, axis=None, delay=False):
         assert axis in [0, None]
-        return self.min()
+        return self.min(delay=delay)
 
     @nep18_method(np.nanmax)
-    def _nanmax(self, axis=None):
+    def _nanmax(self, axis=None, delay=False):
         assert axis in [0, None]
-        return self.max()
+        return self.max(delay=delay)
 
     def __array_function__(self, func, types, args, kwargs):
         method = _nep18_method_mapping.get(func)
@@ -361,13 +361,13 @@ class Expression(with_metaclass(Meta)):
 
     @nep13_method(np.nansum)
     @nep18_method(np.nansum)
-    def nansum(self, axis=None):
+    def nansum(self, axis=None, delay=False):
         assert axis in [0, None]
         # TODO: smarter upcasting
         if self.dtype == np.bool:
-            return self.astype('int64').sum()
+            return self.astype('int64').sum(delay=delay)
         else:
-            return self.sum()
+            return self.sum(delay=delay)
 
     def __getitem__(self, slice):
         return self.ds[slice][self.expression]
@@ -572,13 +572,13 @@ class Expression(with_metaclass(Meta)):
         return self.ds.sum(**kwargs)
 
     @nep13_and_18_method(np.sum)
-    def _sum(self, axis=None):
+    def _sum(self, axis=None, delay=False):
         assert axis in [0, None]
         # TODO: smarter upcasting
         if self.dtype == np.bool:
-            return self.astype('int64').sum()
+            return self.astype('int64').sum(delay=delay)
         else:
-            return self.sum()
+            return self.sum(delay=delay)
 
     def mean(self, binby=[], limits=None, shape=default_shape, selection=False, delay=False, progress=None):
         '''Shortcut for ds.mean(expression, ...), see `Dataset.mean`'''
@@ -588,9 +588,9 @@ class Expression(with_metaclass(Meta)):
         return self.ds.mean(**kwargs)
 
     @nep13_and_18_method(np.mean)
-    def _mean(self, axis=None):
+    def _mean(self, axis=None, delay=False):
         assert axis in [0, None]
-        return self.mean()
+        return self.mean(delay=delay)
 
     def std(self, binby=[], limits=None, shape=default_shape, selection=False, delay=False, progress=None):
         '''Shortcut for ds.std(expression, ...), see `Dataset.std`'''
@@ -607,9 +607,9 @@ class Expression(with_metaclass(Meta)):
         return self.ds.var(**kwargs)
 
     @nep13_and_18_method(np.nanvar)
-    def _nanvar(self, axis=None):
+    def _nanvar(self, axis=None, delay=False):
         assert axis in [0, None]
-        return self.var()
+        return self.var(delay=delay)
 
 
     def minmax(self, binby=[], limits=None, shape=default_shape, selection=False, delay=False, progress=None):
@@ -1043,11 +1043,14 @@ def f({0}):
 
 
 # these methods are added at runtime by the metaclass
+# but we may want to reuse a similar code as in vaex/numpy
 nep13_and_18_method(np.invert)(Expression.__invert__)
 nep13_and_18_method(np.subtract)(Expression.__sub__)
 nep13_and_18_method(np.true_divide)(Expression.__truediv__)
 nep13_and_18_method(np.multiply)(Expression.__mul__)
 nep13_and_18_method(np.add)(Expression.__add__)
+nep13_and_18_method(np.equal)(Expression.__eq__)
+nep13_and_18_method(np.negative)(Expression.__neg__)
 
 
 class FunctionSerializable(object):
