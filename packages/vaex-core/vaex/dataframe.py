@@ -4968,6 +4968,7 @@ class DataFrameLocal(DataFrame):
     def copy(self, column_names=None, virtual=True):
         df = DataFrameArrays()
         df._length_unfiltered = self._length_unfiltered
+        df._allow_array_casting = self._allow_array_casting
         df._length_original = self._length_original
         df._cached_filtered_length = self._cached_filtered_length
         df._index_end = self._index_end
@@ -5212,7 +5213,7 @@ class DataFrameLocal(DataFrame):
 
     @contextlib.contextmanager
     def array_casting_disabled(self):
-        self._allow_array_casting = True
+        self._allow_array_casting = False
         yield
         self._allow_array_casting = True
 
