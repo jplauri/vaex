@@ -3289,6 +3289,7 @@ class DataFrame(object):
         return new_name
 
     def _rename(self, old, new, rename_meta_data=False):
+        print("rename", old, new)
         if old in self._dtypes_override:
             self._dtypes_override[new] = self._dtypes_override.pop(old)
         is_variable = False
@@ -4469,7 +4470,6 @@ class DataFrame(object):
         >>> df.r
         <vaex.expression.Expression(expressions='r')> instance at 0x121687e80 values=[2.9655450396553587, 5.77829281049018, 6.99079603950256, 9.431842752707537, 0.8825613121347967 ... (total 330000 values) ... 7.453831761514681, 15.398412491068198, 8.864250273925633, 17.601047186042507, 14.540181524970293]
         '''
-
         if isinstance(item, six.string_types):
             if isinstance(value, (np.ndarray, Column)):
                 self.add_column(item, value)
@@ -4477,9 +4477,36 @@ class DataFrame(object):
                 self.add_virtual_column(item, value)
         elif isinstance(item, tuple):
             assert len(item) == 2 and isinstance(item[0], slice), 'can only set using df[:,0] or df[:,\'name\'] syntax'
+            if isinstance(item[1], (slice, list, tuple)):
+                names = self.get_column_names()
+                if isinstance(item[1], (slice)):
+                    names = names.__getitem__(item[1])
+                else:
+                    if isinstance(item[1][0], int):
+                        names = [names[k] for k in item[1]]
+                    else:
+                        names = item[1]
+                if isinstance(value, (int, float)):
+                    for name in names:
+                        self[name] = self[name] * 0 + value
+                elif isinstance(value, DataFrame) and self is not value:
+                    all_names = self.get_column_names()
+                    self.join(value, rprefix="rhs_", inplace=True)
+                    names_right = self.get_column_names()[len(all_names):]
+                    names_left = names
+                    for name_left, name_right in zip(names_left, names_right):
+                        self[name_left] = self[name_right]
+                        self._hide_column(name_right)
+                else:
+                    for name in names:
+                        self[name] = value[name]
+                return
             if isinstance(item[1], int):
                 name = self.get_column_names()[item[1]]
-            self[name] = value
+            if isinstance(value, (int, float)):
+                self[name] = self[name] * 0 + value
+            else:
+                self[name] = value
         else:
             raise TypeError('__setitem__ only takes strings as arguments, not {}'.format(type(name)))
 
@@ -4573,7 +4600,7 @@ class DataFrame(object):
             return self.filter(expression)
         elif isinstance(item, (tuple, list)):
             df = self
-            if isinstance(item[0], slice):
+            if len(item) > 0 and isinstance(item[0], slice):
                 df = df[item[0]]
             if len(item) > 1:
                 if isinstance(item[1], int):
@@ -4581,6 +4608,10 @@ class DataFrame(object):
                     return df[name]
                 elif isinstance(item[1], slice):
                     names = self.get_column_names().__getitem__(item[1])
+                    return df[names]
+                elif isinstance(item[1], (tuple, list)):
+                    names = self.get_column_names()
+                    names = [names[i] for i in item[1]]
                     return df[names]
             for expression in item:
                 self.validate_expression(expression)
@@ -4606,6 +4637,24 @@ class DataFrame(object):
             df = self.trim()
             df.set_active_range(start, stop)
             return df.trim()
+
+    def _prod(self, axis=None):
+        df = self.copy()
+        assert axis == 1
+        if axis == 1:
+            names = self.get_column_names()
+            if len(names) == 0:
+                df['test'] = vaex.vrange(0, len(df))
+                df['test'] = df['test'] * 0 + 1
+            else:
+                expression = df[self.names[0]]
+                self._hide_column(names[0])
+                for name in names[1:]:
+                    expression = expression * df[name]
+                    self._hide_column(name)
+        return df
+            
+
 
     def __delitem__(self, item):
         '''Removes a (virtual) column from the DataFrame.

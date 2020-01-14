@@ -250,8 +250,8 @@ def relax_sklearn_check():
     import sys
     # version = tuple(map(int, sklearn.__version__.split('.')[:2]))
 
-    pca_linalg = sklearn.decomposition.pca.linalg
-    sklearn.decomposition.pca.linalg = np.linalg
+    pca_linalg = sklearn.decomposition._pca.linalg
+    sklearn.decomposition._pca.linalg = np.linalg
 
     sklearn_modules = [mod for name, mod in sys.modules.items() if name.startswith("sklearn")]
     previous_check_arrays = {}
@@ -262,6 +262,6 @@ def relax_sklearn_check():
             previous_check_arrays[module] = module.check_array
             module.check_array = dummy
     yield
-    sklearn.decomposition.pca.linalg = pca_linalg
+    sklearn.decomposition._pca.linalg = pca_linalg
     for module, check_array in previous_check_arrays.items():
        module.check_array = previous_check_arrays[module]

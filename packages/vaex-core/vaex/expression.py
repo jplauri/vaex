@@ -232,6 +232,7 @@ class Expression(with_metaclass(Meta)):
         if df is None:
             df = self.df
         if self._expression is not None:
+            import copy
             expression = Expression(df, self._expression)
             if self._ast is not None:
                 expression._ast = copy.deepcopy(self._ast)
@@ -370,6 +371,12 @@ class Expression(with_metaclass(Meta)):
             return self.sum(delay=delay)
 
     def __getitem__(self, slice):
+        if isinstance(slice, tuple):
+            if len(slice) != 2:
+                raise ValueError("Multidimensional slice can only be 2d")
+            slice1, slice2 = slice
+            if slice2 is None:  # newaxis
+                return self.df.copy([self.expression])[slice1]
         return self.ds[slice][self.expression]
 
     def __abs__(self):
@@ -608,6 +615,11 @@ class Expression(with_metaclass(Meta)):
 
     @nep13_and_18_method(np.nanvar)
     def _nanvar(self, axis=None, delay=False):
+        assert axis in [0, None]
+        return self.var(delay=delay)
+
+    @nep13_and_18_method(np.var)
+    def _var(self, axis=None, delay=False, ddof=None):
         assert axis in [0, None]
         return self.var(delay=delay)
 

@@ -31,27 +31,92 @@ def nep13_and_18_method(numpy_function):
 
 
 class DataFrameAccessorNumpy:
-    def __init__(self, df, transposed=False):
-        self.df = df
+    def __init__(self, df, transposed=False, column_names=None):
+        self._df = df
         self._transposed = transposed
+        if column_names is None:
+            column_names = df.get_column_names()
+        self.column_names = column_names
+        self._allow_array_casting = df._allow_array_casting
+
+    @property
+    def df(self):
+        return self._df[self.column_names]
+
+    def __repr__(self):
+        names = ', '.join(self.column_names)
+        return f'numpy wrapper for columns {names}: \n'  + repr(self.df)
 
     def __len__(self):
-        return len(self.df)
-    
+        return len(self._df)
+
     def __array__(self, dtype=None, parallel=True):
-        ar = self.df.__array__(dtype=dtype, parallel=parallel)
+        if not self._allow_array_casting:
+            raise RuntimeError('casting a dataframe numpy view to an array is explicitly disabled')
+        try:
+            _previous__allow_array_casting = self._df._allow_array_casting
+            self._df._allow_array_casting = True
+            ar = self.df.__array__(dtype=dtype, parallel=parallel)
+        finally:
+            self._df._allow_array_casting = _previous__allow_array_casting
         return ar.T if self._transposed else ar
-    
-    def __iter__(self):
-        """Iterator over the column names."""
-        if self._transposed:
-            for name in self.df.get_column_names():
-                yield self[name]
-        else:
-            raise ValueError("Iterating over rows is not supported")
+
+    # def __iter__(self):
+    #     """Iterator over the column names."""
+    #     if self._transposed:
+    #         for name in self.df.get_column_names():
+    #             yield self[name]
+    #     else:
+    #         raise ValueError("Iterating over rows is not supported")
 
     def __getitem__(self, item):
-        return self.df.__getitem__(item)
+        if isinstance(item, tuple):
+            row, col = item
+            if row != slice(None, None, None):
+                raise ValueError("Please don't slice on row basis")
+            if isinstance(col, int):
+                column_names = [self.column_names[col]]
+            elif isinstance(col, slice):
+                column_names = self.column_names.__getitem__(col)
+            elif isinstance(col, (list, tuple)):
+                column_names = [self.column_names[k] for k in col]
+            return DataFrameAccessorNumpy(self._df, self._transposed, column_names)
+        elif isinstance(item, slice):
+            return self[item, :]
+        elif isinstance(item, str):
+            return self._df[item]
+        else:
+            raise ValueError(f'Item not understood: {item}')
+
+    def __setitem__(self, item, value):
+        if isinstance(item, tuple):
+            row, col = item
+            if row != slice(None, None, None):
+                raise ValueError("Please don't slice on row basis")
+            if isinstance(col, int):
+                column_names = [self.column_names[col]]
+            elif isinstance(col, slice):
+                column_names = self.column_names.__getitem__(col)
+            elif isinstance(col, (list, tuple)):
+                column_names = [self.column_names[k] for k in col]
+            item = (row, column_names)
+            if isinstance(value, DataFrameAccessorNumpy):
+                value = value._df[value.column_names]
+            self._df.__setitem__(item, value)
+        elif isinstance(item, slice):
+            self[item, :] = value
+        elif isinstance(item, int):
+            if not self._transposed:
+                raise ValueError("Cannot assign to rows")
+            item = (slice(None), item)
+            self._df.__setitem__(item, value)
+        elif isinstance(item, (tuple, list)):
+            if not self._transposed:
+                raise ValueError("Cannot assign to rows")
+            item = (slice(None), item)
+            self._df.__setitem__(item, value)
+        else:
+            raise ValueError(f'Item not understood: {item}')
 
     @property
     def numpy(self):
@@ -59,14 +124,14 @@ class DataFrameAccessorNumpy:
 
     @property
     def T(self):
-        return type(self)(self.df, transposed=not self._transposed)
+        return type(self)(self._df, transposed=not self._transposed, column_names=self.column_names)
 
     @property
     def shape(self):
         if self._transposed:
-            return (len(self.df.get_column_names()), len(self))
+            return (len(self.column_names), len(self))
         else:
-            return (len(self), len(self.df.get_column_names()))
+            return (len(self), len(self.column_names))
 
     @property
     def ndim(self):
@@ -74,7 +139,7 @@ class DataFrameAccessorNumpy:
 
     @property
     def dtype(self):
-        dtypes = [self[k].dtype for k in self.df.get_column_names()]
+        dtypes = [self._df[k].dtype for k in self.column_names]
         assert all([dtypes[0] == dtype for dtype in dtypes])
         return dtypes[0]
 
@@ -82,23 +147,29 @@ class DataFrameAccessorNumpy:
         method = _nep13_method_mapping.get(ufunc)
         if method is None:
             return NotImplemented
-        # if len(inputs) > 1 and inputs[1] is self:
-        #     assert len(inputs) == 2  # TODO: check if arguments can be swapped? how?
-        #     inputs = inputs[::-1]
-        # if inputs[0] is not self:
-        #     return NotImplemented
-        # assert inputs[0] is self or inputs[1] is self
-        return method(*inputs)
+        return method(*inputs, **kwargs)
 
     def __array_function__(self, func, types, args, kwargs):
         method = _nep18_method_mapping.get(func)
         if method is None:
             return NotImplemented
-
-        assert args[0] is self.df or args[0] is self
+        assert args[0] is self._df or args[0] is self
         result = method(*args, **kwargs)
         return result
 
+
+    @nep18_method(np.empty_like)
+    def empty_like(self, dtype=None, order='K', subok=True, shape=None):
+        # we ignore order
+        if shape is None:
+            shape = self.shape
+        assert subok
+        assert dtype in [None, self.dtype]
+        rows, columns = shape
+        # TODO: instead of vrange, we might want to have a vaex.zeros
+        vcol = vaex.vrange(0, rows, dtype=dtype)
+        df = vaex.from_dict({f'c{i}': vcol for i in range(columns)})
+        return df.numpy
 
     @nep18_method(np.mean)
     def _np_mean(self, axis=None):
@@ -121,7 +192,7 @@ class DataFrameAccessorNumpy:
                 products = ['%s * %s' % (ai, bi) for ai, bi in zip(a, b)]
                 return ' + '.join(products)
             df[output_names[i]] = dot_product(columns, b[:,i])
-        return df
+        return df.numpy
 
     @nep18_method(np.may_share_memory)
     def _may_share_memory(self, b):
@@ -153,10 +224,16 @@ for op in vaex.expression._binary_ops:
         continue
     numpy_function = getattr(np, name)
     assert numpy_function, 'numpy does not have {}'.format(name)
+
     def closure(name=name, numpy_function=numpy_function):
-        def binary_op_method(self, rhs):
-            assert isinstance(self, DataFrameAccessorNumpy)
-            df = self.df.copy()
+        def binary_op_method(self, rhs, out=None, casting=None):
+            assert casting in [None, 'no', 'same_kind']
+            if isinstance(self, DataFrameAccessorNumpy):
+                df = self.df
+            else:
+                df = self
+                self = DataFrameAccessorNumpy(self)
+            df = df.copy()
             if isinstance(rhs, np.ndarray):
                 if self._transposed:
                     name = vaex.utils.find_valid_name('__aux', used=df.get_column_names(hidden=True))
@@ -167,9 +244,49 @@ for op in vaex.expression._binary_ops:
                 else:
                     for i, name in enumerate(self.df.get_column_names()):
                         df[name] = numpy_function(df[name], rhs[i])
+            elif isinstance(rhs, (vaex.dataframe.DataFrame, DataFrameAccessorNumpy)):
+                if isinstance(rhs, DataFrameAccessorNumpy):
+                    rhs = rhs.df[rhs.column_names]
+                # when the rhs is a dataframe, we join/stack the dataframes first
+                dfj = df.join(rhs, rprefix="rhs_")
+                names_left = df.get_column_names()
+                names_right = dfj.get_column_names()[len(names_left):]
+                df = dfj.copy()
+                if len(names_left) == 1 and len(names_right) > 1:
+                    # broadcast left
+                    name_left = names_left[0]
+                    for name_right in names_right:
+                        df[name_right] = numpy_function(df[name_left], df[name_right])
+                    df._hide_column(name_left)
+                elif len(names_right) == 1 and len(names_left) > 1:
+                    # broadcast right
+                    name_right = names_right[0]
+                    for name_left in names_left:
+                        df[name_left] = numpy_function(df[name_left], df[name_right])
+                    df._hide_column(name_right)
+                elif len(names_right) == len(names_left):
+                    for name_left, name_right in zip(names_left, names_right):
+                        df[name_left] = numpy_function(df[name_left], df[name_right])
+                        df._hide_column(name_right)
+                else:
+                    raise ValueError("cannot broadcast")
             else:
                 for i, name in enumerate(self.df.get_column_names()):
                     df[name] = numpy_function(df[name], rhs)
+            if out is not None:
+                if isinstance(out, tuple):
+                    assert len(out) == 1, "unexpected length of tuple of out argument"
+                    out = out[0]
+                assert isinstance(out, (vaex.dataframe.DataFrame, DataFrameAccessorNumpy)), 'only output to dataframe or numpy accessor supported'
+                if isinstance(out, DataFrameAccessorNumpy):
+                    names_left = out.column_names
+                    out = out._df
+                else:
+                    names_left = out.get_column_names()
+                out[:, names_left] = df
+                df = out
+                out[:, names_left] = df
+                df = out
             if self._transposed:
                 return df.T
             else:
@@ -230,19 +347,7 @@ for name, numpy_name in vaex.functions.numpy_function_mapping + [('isnan', 'isna
             else:
                 df = self
                 self = df.numpy
-            # assert isinstance(self, DataFrameAccessorNumpy)
             df = df.copy()
-            # if isinstance(rhs, np.ndarray):
-            #     if self._transposed:
-            #         name = vaex.utils.find_valid_name('__aux', used=df.get_column_names(hidden=True))
-            #         df.add_column(name, rhs)
-            #         rhs = df[name]
-            #         for i, name in enumerate(self.df.get_column_names()):
-            #             df[name] = numpy_function(df[name], rhs)
-            #     else:
-            #         for i, name in enumerate(self.df.get_column_names()):
-            #             df[name] = numpy_function(df[name], rhs[i])
-            # else:
             for name in df.get_column_names():
                 df[name] = numpy_function(df[name], *args, **kwargs)
             if self._transposed:
@@ -251,18 +356,16 @@ for name, numpy_name in vaex.functions.numpy_function_mapping + [('isnan', 'isna
                 return df
         return forward_call
 
-    print("add", numpy_function)
     nep13_and_18_method(numpy_function)(closure())
-
-
 
 
 aggregates_functions = [
     'nanmin',
     'nanmax',
     'nansum',
-    'nanvar',
     'sum',
+    'var',
+    'nanvar'
 ]
 
 for numpy_name in aggregates_functions:
@@ -297,4 +400,3 @@ for numpy_name in aggregates_functions:
         return forward_call
 
     nep13_and_18_method(numpy_function)(closure())
-
