@@ -190,6 +190,18 @@ def test_polynomial_transformer(df, degree, interaction_only, include_bias):
     Xt = poly_trans_sklearn.fit_transform(X)
     np.testing.assert_array_almost_equal(Xt, np.array(dft), decimal=3)
 
+@pytest.mark.parametrize("output_distribution", ['uniform', 'normal'])
+def test_quantile_transformer(df, output_distribution):
+    with relax_sklearn_check(), df.array_casting_disabled():
+        quant_trans_vaex = QuantileTransformer(n_quantiles=5, random_state=42, output_distribution=output_distribution)
+        dft = quant_trans_vaex.fit_transform(df)
+        assert isinstance(dft, vaex.DataFrame)
+
+    quant_trans_sklearn = QuantileTransformer(n_quantiles=5, random_state=42, output_distribution=output_distribution)
+    X = np.array(df)
+    Xt = quant_trans_sklearn.fit_transform(X)
+    np.testing.assert_array_almost_equal(Xt, np.array(dft), decimal=3)
+
 def test_sklearn_pca(df):
     from sklearn.decomposition import PCA
     for n in [1,2]:
