@@ -202,6 +202,20 @@ def test_quantile_transformer(df, output_distribution):
     Xt = quant_trans_sklearn.fit_transform(X)
     np.testing.assert_array_almost_equal(Xt, np.array(dft), decimal=3)
 
+@pytest.mark.parametrize("n_bins", [2, 3])
+@pytest.mark.parametrize("encode", ['ordinal', 'onehot-dense'])
+@pytest.mark.parametrize("strategy", ['uniform', 'quantile', 'kmeans'])
+def test_kbins_discretizer(df, n_bins, encode, strategy):
+    with relax_sklearn_check(), df.array_casting_disabled():
+        trans_vaex = KBinsDiscretizer(n_bins=n_bins, encode=encode, strategy=strategy)
+        dft = trans.fit_transform(df)
+        assert isinstance(dft, vaex.DataFrame)
+
+    trans_sklearn = KBinsDiscretizer(n_bins=n_bins, encode=encode, strategy=strategy)
+    X = np.array(df)
+    Xt = trans_sklearn.fit_transform(X)
+    np.testing.assert_array_almost_equal(Xt, np.array(dft), decimal=3)
+
 def test_sklearn_pca(df):
     from sklearn.decomposition import PCA
     for n in [1,2]:
