@@ -17,7 +17,7 @@ from vaex.ml import relax_sklearn_check
 
 @pytest.fixture
 def df():
-    x = np.arange(10, dtype=np.float64)
+    x = np.arange(1, 11, dtype=np.float64)
     y = x**2
     df = vaex.from_arrays(x=x, y=y)
     return df
@@ -162,17 +162,19 @@ def test_sklearn_standard_scaler(df):
     Xt = scaler.transform(X)
     assert np.all(Xt == np.array(dft))
 
-def test_sklearn_power_transformer(df):
+@pytest.mark.parametrize("standardize", [True, False])
+@pytest.mark.parametrize("method", ['yeo-johnson', 'box-cox'])
+def test_sklearn_power_transformer(df, standardize, method):
     from sklearn.preprocessing import PowerTransformer
     with relax_sklearn_check(), df.array_casting_disabled():
-        scaler = PowerTransformer(standardize=False)
-        scaler.fit(df)
-
-        dft = scaler.transform(df.copy())
+        power_trans_vaex = PowerTransformer(standardize=standardize, method=method, copy=True)
+        dft = power_trans_vaex.fit_transform(df)
         assert isinstance(dft, vaex.DataFrame)
+
     X = np.array(df)
-    Xt = scaler.transform(X)
-    assert np.all(Xt == np.array(dft))
+    power_trans_sklearn = PowerTransformer(standardize=standardize, method=method, copy=True)
+    Xt = power_trans_sklearn.fit_transform(X)
+    np.testing.assert_array_almost_equal(Xt, np.array(dft), decimal=3)
 
 
 def test_sklearn_pca(df):
