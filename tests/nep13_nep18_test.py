@@ -176,6 +176,19 @@ def test_sklearn_power_transformer(df, standardize, method):
     Xt = power_trans_sklearn.fit_transform(X)
     np.testing.assert_array_almost_equal(Xt, np.array(dft), decimal=3)
 
+@pytest.mark.parametrize("degree", [2, 3])
+@pytest.mark.parametrize("interaction_only", [True, False])
+@pytest.mark.parametrize("include_bias", [True, False])
+def test_polynomial_transformer(df, degree, interaction_only, include_bias):
+    with relax_sklearn_check(), df.array_casting_disabled():
+        poly_trans_vaex = PolynomialFeatures(degree=degree, interaction_only=interaction_only, include_bias=include_bias)
+        dft = poly_trans_vaex.fit_transform(df)
+        assert isinstance(dft, vaex.DataFrame)
+
+    poly_trans_sklearn = PolynomialFeatures(degree=degree, interaction_only=interaction_only, include_bias=include_bias)
+    X = np.array(df)
+    Xt = poly_trans_sklearn.fit_transform(X)
+    np.testing.assert_array_almost_equal(Xt, np.array(dft), decimal=3)
 
 def test_sklearn_pca(df):
     from sklearn.decomposition import PCA
