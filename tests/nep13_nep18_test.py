@@ -216,21 +216,18 @@ def test_kbins_discretizer(df, n_bins, encode, strategy):
     Xt = trans_sklearn.fit_transform(X)
     np.testing.assert_array_almost_equal(Xt, np.array(dft), decimal=3)
 
-def test_sklearn_pca(df):
+@pytest.mark.parametrize("n_components", [1, 2])
+@pytest.mark.parametrize("svd_solver", ['full', 'arpack', 'randomized'])
+def test_sklearn_pca(df, n_components, svd_solver):
     from sklearn.decomposition import PCA
-    for n in [1,2]:
-        with relax_sklearn_check(), df.array_casting_disabled():
-            scaler = PCA(n_components=n)
-            scaler.fit(df)
-            dfc = df.copy()
-            dft = scaler.transform(dfc)
-            assert isinstance(dft, vaex.DataFrame)
-        X = np.array(df)
-        Xt = scaler.transform(X)
-        Xtv = np.array(dft)
-        # we/dask do the math slighty different it seems, so not 100% the same
-        numpy.testing.assert_almost_equal(Xt, Xtv)
+    with relax_sklearn_check(), df.array_casting_disabled():
+        pca_vaex = PCA(n_components=n_components, random_state=42, svd_solver=svd_solver)
+        dft = pca_vaex.fit_transform(df)
 
+    pca_sklearn = PCA(n_components=n_components, random_state=42, svd_solver=svd_solver)
+    X = np.array(df)
+    Xt = pca_sklearn.fit_transform(X)
+    np.testing.assert_array_almost_equal(Xt, np.array(dft), decimal=6)
 
 def test_dask_qr(df):
     X = np.array(df)
