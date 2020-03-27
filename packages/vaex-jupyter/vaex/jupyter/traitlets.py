@@ -1,10 +1,11 @@
-from __future__ import absolute_import
 import traitlets
+import vaex
+
 
 def nice_type(df, name):
     dtype = df.dtype(name)
     type_map = {'i': 'integer', 'u': 'integer', 'f': 'float', 'b': 'boolean',
-               'M': 'date/time'}
+                'M': 'date/time'}
     if dtype == str:
         return 'string'
     else:
@@ -26,6 +27,7 @@ class ColumnsMixin(traitlets.HasTraits):
             'expression': 'foo + "spam"'
         }
     ]).tag(sync=True)
+
     def __init__(self, df=None, **kwargs):
         super(ColumnsMixin, self).__init__(df=df, **kwargs)
         if df:
@@ -49,3 +51,31 @@ class ColumnsMixin(traitlets.HasTraits):
                     item['expression'] = expression
                 yield item
         self.columns = list(_())
+
+
+class Expression(traitlets.Any):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.tag(to_json=self._to_json, from_json=self._from_json)
+
+    def _to_json(self, value, widget):
+        return str(value)
+
+    def _from_json(self, value, widget):
+        return widget.df[value]
+
+    def validate(self, obj, value):
+        try:
+            df = obj.df  # we assume the object has a dataframe instance
+        except traitlets.traitlets.TraitError:
+            if value is None:
+                return None
+            else:
+                raise
+        if isinstance(value, str):
+            df.validate_expression(value)
+            return df[value]
+        elif isinstance(value, vaex.expression.Expression):
+            return value
+        else:
+            raise traitlets.TraitError(f'{value} should be a string or vaex expression')

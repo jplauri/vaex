@@ -13,6 +13,20 @@ def get_ioloop():
         return zmq.eventloop.ioloop.IOLoop.instance()
 
 
+debounced_execute_queue = []
+debounce_enabled = True  # can be useful to turn off for debugging purposes
+
+
+def _debounced_flush(recursive_counts=-1):
+    """Run all non-executed debounced functions"""
+    queue = debounced_execute_queue.copy()
+    for f in queue:
+        f()
+        debounced_execute_queue.remove(f)
+    if debounced_execute_queue and recursive_counts != 0:
+        _debounced_flush(recursive_counts-1)
+
+
 def debounced(delay_seconds=0.5, method=False):
     def wrapped(f):
         counters = collections.defaultdict(int)
@@ -25,17 +39,24 @@ def debounced(delay_seconds=0.5, method=False):
                 key = None
             counters[key] += 1
 
+            @functools.wraps(execute)
             def debounced_execute(counter=counters[key]):
                 if counter == counters[key]:  # only execute if the counter wasn't changed in the meantime
                     f(*args, **kwargs)
-            ioloop = get_ioloop()
+            if debounce_enabled:
+                ioloop = get_ioloop()
 
-            def thread_safe():
-                ioloop.add_timeout(time.time() + delay_seconds, debounced_execute)
-            if ioloop is None:  # not in IPython
-                debounced_execute()
+                def thread_safe():
+                    ioloop.add_timeout(time.time() + delay_seconds, debounced_execute)
+                if ioloop is None:  # not in IPython
+                    # debounced_execute()
+                    debounced_execute_queue.append(debounced_execute)
+                    print("add to queue")
+                else:
+                    ioloop.add_callback(thread_safe)
             else:
-                ioloop.add_callback(thread_safe)
+                debounced_execute()
+        execute.original = f
         return execute
     return wrapped
 
