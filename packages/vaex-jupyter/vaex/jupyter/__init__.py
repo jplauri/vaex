@@ -92,16 +92,30 @@ class DataFrameAccessorWidget(object):
             viz.toolbar = _add_toolbar(viz)
         return viz
 
-    def expression(self, initial_value=None):
+    def expression(self, value=None, label='Custom expression'):
         from .widgets import ExpressionTextArea
-        return ExpressionTextArea(df=self.df, v_model=str(initial_value) if initial_value is not None else None)
+        import vaex.jupyter.model
+        if isinstance(value, vaex.jupyter.model.Axis):
+            expression_value = str(value.expression)
+        else:
+            expression_value = str(value) if value is not None else None
+        expression_widget = ExpressionTextArea(df=self.df, v_model=expression_value, label=label)
+        if isinstance(value, vaex.jupyter.model.Axis):
+            import traitlets
+            traitlets.link((value, 'expression'), (expression_widget, 'value'))
+        return expression_widget
 
     def column(self, initial_value=None):
         from .widgets import ColumnPicker
         return ColumnPicker(df=self.df, value=str(initial_value) if initial_value is not None else None)
 
-    def selection(self, initial_value, name='default'):
+    def selection_expression(self, initial_value=None, name='default'):
         from .widgets import ExpressionSelectionTextArea
+        if initial_value is None:
+            if not self.df.has_selection(name):
+                raise ValueError(f'No selection with name {name!r}')
+            else:
+                initial_value = self.df.get_selection(name).boolean_expression
         return ExpressionSelectionTextArea(df=self.df, selection_name=name, v_model=str(initial_value) if initial_value is not None else None)
 
     def progress_circular(self, width=10, size=70, color='#82B1FF', text='', auto_hide=False):

@@ -1,5 +1,5 @@
 import vaex
-import numpy as np
+import pytest
 import bqplot
 from vaex.jupyter.utils import _debounced_flush as flush
 import vaex.jupyter.model
@@ -20,18 +20,29 @@ def test_selection_event_calls(df, flush_guard):
 
 def test_widget_selection(flush_guard):
     df = vaex.example()
-    counts = 0
+    with pytest.raises(ValueError) as e:
+        selection_widget_default = df.widget.selection_expression()
+    assert "'default'" in str(e.value)
+
+    counts = {'default': 0, 'pos': 0}
     @df.signal_selection_changed.connect
     def update(df, name):
         nonlocal counts
-        counts += 1
+        counts[name] += 1
     count_pos = df.count(selection=df.x > 0)
-    selection_widget = df.widget.selection(df.x > 0, name='pos')
-    assert counts == 1
+
+    df.select(df.x > 0)
+    selection_widget_default = df.widget.selection_expression()
+    assert selection_widget_default.value.expression == '(x > 0)'
+
+    selection_widget = df.widget.selection_expression(df.x > 0, name='pos')
+    assert selection_widget_default.value.expression == '(x > 0)'
+    # selection_widget = df.widget.selection(df.x > 0, name='pos')
+    assert counts == {'default': 2, 'pos': 1}
     assert df.count(selection='pos') == count_pos
     selection_widget.v_model = 'x < 0'
     assert selection_widget.error_messages is None
-    assert counts == 2
+    assert counts == {'default': 2, 'pos': 2}
     flush()
 
 

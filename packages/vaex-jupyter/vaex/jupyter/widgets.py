@@ -6,6 +6,8 @@ from traitlets import *  # noqa
 from . import traitlets as vt
 import os
 
+import vaex.jupyter
+
 
 def load_template(filename):
     with open(os.path.join(os.path.dirname(__file__), filename)) as f:
@@ -156,7 +158,7 @@ class ProgressCircularNoAnimation(v.VuetifyTemplate):
 
 
 @component('vaex-expression')
-class Expression(v.Textarea):
+class Expression(v.TextField):
     df = traitlets.Any()
     valid = traitlets.Bool(True)
     value = vt.Expression(None, allow_none=True)
@@ -208,7 +210,12 @@ class Expression(v.Textarea):
         self.success_messages = "Looking good"
         self.valid = True
         self.value = self.v_model
+        self._clear_succes()
         return True
+
+    @vaex.jupyter.debounced(method=True, delay_seconds=1.5)
+    def _clear_succes(self):
+        self.success_messages = None
 
 
 ExpressionTextArea = Expression

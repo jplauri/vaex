@@ -18,6 +18,24 @@ def df():
     return ds
 
 
+def test_data_array_attrs(df, flush_guard):
+    x = vaex.jupyter.model.Axis(df=df, expression='x', min=0, max=1)
+    y = vaex.jupyter.model.Axis(df=df, expression='y')
+    model = vaex.jupyter.model.Heatmap(df=df, x=x, y=y, shape=5)
+    assert x.min == 0
+    assert x.max == 1
+    grid = vaex.jupyter.grid.Grid(df, [model])  # noqa
+    assert x.min == 0
+    assert x.max == 1
+    flush()
+    assert x.min == 0
+    assert x.max == 1
+    assert model.grid.coords['x'].attrs['min'] == 0
+    assert model.grid.coords['x'].attrs['max'] == 1
+    assert model.grid.coords['y'].attrs['min'] == y.min
+    assert model.grid.coords['y'].attrs['max'] == y.max
+
+
 def test_axis_status(df, flush_guard):
     x = vaex.jupyter.model.Axis(df=df, expression=df.x)
     assert x.status == x.Status.NO_LIMITS
@@ -25,6 +43,44 @@ def test_axis_status(df, flush_guard):
     assert x.status == x.Status.CALCULATING_LIMITS
     df.execute()
     assert x.status == x.Status.READY
+
+
+def test_axis_minmax(df, flush_guard):
+    x = vaex.jupyter.model.Axis(df=df, expression=df.x)
+    model = vaex.jupyter.model.DataArray(df=df, axes=[x])
+    grid = vaex.jupyter.grid.Grid(df, [model])  # noqa
+    flush()
+    assert x.min == df.x.min()
+    assert x.max == df.x.max()
+
+    x = vaex.jupyter.model.Axis(df=df, expression=df.x, min=1, max=2)
+    model = vaex.jupyter.model.DataArray(df=df, axes=[x])
+    grid = vaex.jupyter.grid.Grid(df, [model])  # noqa
+    flush()
+    assert x.min == 1
+    assert x.max == 2
+
+    # with 2 axes
+    x = vaex.jupyter.model.Axis(df=df, expression=df.x, min=1, max=2)
+    y = vaex.jupyter.model.Axis(df=df, expression=df.y, min=2, max=3)
+    model = vaex.jupyter.model.DataArray(df=df, axes=[x, y])
+    grid = vaex.jupyter.grid.Grid(df, [model])  # noqa
+    flush()
+    assert x.min == 1
+    assert x.max == 2
+    assert y.min == 2
+    assert y.max == 3
+
+    # with 2 axes, one with min/max
+    x = vaex.jupyter.model.Axis(df=df, expression=df.x, min=1, max=2)
+    y = vaex.jupyter.model.Axis(df=df, expression=df.y)
+    model = vaex.jupyter.model.DataArray(df=df, axes=[x, y])
+    grid = vaex.jupyter.grid.Grid(df, [model])  # noqa
+    flush()
+    assert x.min == 1
+    assert x.max == 2
+    assert y.min == df.y.min()
+    assert y.max == df.y.max()
 
 
 def test_model_status(df, flush_guard):

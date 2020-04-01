@@ -47,6 +47,8 @@ class Grid:
             has_slice = False
             dims = ["selection"]
             coords = [selections.copy()]
+            mins = []
+            maxs = []
             for other_model in self.models:
                 if other_model == model:  # simply skip these axes
                     # for expression, shape, limit, slice_index in other_model.bin_parameters():
@@ -54,6 +56,8 @@ class Grid:
                         axis_index += 1
                         dims.append(str(axis.expression))
                         coords.append(axis.centers)
+                        mins.append(axis.min)
+                        maxs.append(axis.max)
                 else:
                     # for expression, shape, limit, slice_index in other_model.bin_parameters():
                     for axis in other_model.axes:
@@ -64,7 +68,12 @@ class Grid:
                         else:
                             subgrid_sliced = np.sum(subgrid_sliced, axis=axis_index)
                             subgrid = np.sum(subgrid, axis=axis_index)
-            model.grid = xarray.DataArray(subgrid, dims=dims, coords=coords)
+            grid = xarray.DataArray(subgrid, dims=dims, coords=coords)
+            for i, (vmin, vmax) in enumerate(zip(mins, maxs)):
+                # +1 to skip the selection axis
+                grid.coords[dims[i+1]].attrs['min'] = vmin
+                grid.coords[dims[i+1]].attrs['max'] = vmax
+            model.grid = grid
             if has_slice:
                 model.grid_sliced = xarray.DataArray(subgrid_sliced)
             else:
@@ -91,7 +100,12 @@ class Grid:
         def assign_grid(grid):
             self.grid = grid
             self.reslice()
-        assign_grid(self.df.count(binby=binby, shape=shapes, limits=limits, selection=selections, progress=self.progress, delay=True))
+
+        def error(e=None):
+            # we need to have a better way to deal with these errors
+            print('oops', e)
+            raise e
+        assign_grid(self.df.count(binby=binby, shape=shapes, limits=limits, selection=selections, progress=self.progress, delay=True)).then(None, error)
         self._execute()
 
     @vaex.jupyter.debounced(method=True, delay_seconds=0.05)

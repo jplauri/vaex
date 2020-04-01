@@ -97,7 +97,8 @@ class ViewBase(v.Container):
 class DataArray(ViewBase):
     model = traitlets.Instance(model.DataArray)
     display_function = traitlets.Any(display)
-    matplotlib_autoshow = traitlets.Bool(True)
+    matplotlib_autoshow = traitlets.Bool(True, help="Will call plt.show() inside output context if open figure handles exist")
+    numpy_errstate = traitlets.Dict({'all': 'ignore'}, help="Default numpy errstate during display to avoid showing error messsages, see :py:data:`numpy.errstate`_ ")
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -109,16 +110,17 @@ class DataArray(ViewBase):
 
     def update_output(self, change=None):
         self.output_data_array.clear_output(wait=True)
-        with self.output_data_array:
+        with self.output_data_array, np.errstate(**self.numpy_errstate):
             grid = self.model.grid_sliced
             if grid is None:
                 grid = self.model.grid
-            self.display_function(grid)
-            # make sure show is called inside the output widget
-            if self.matplotlib_autoshow and 'matplotlib' in sys.modules:
-                import matplotlib.pyplot as plt
-                if plt.get_fignums():
-                    plt.show()
+            if grid is not None:
+                self.display_function(grid)
+                # make sure show is called inside the output widget
+                if self.matplotlib_autoshow and 'matplotlib' in sys.modules:
+                    import matplotlib.pyplot as plt
+                    if plt.get_fignums():
+                        plt.show()
 
 
 class Heatmap(ViewBase):

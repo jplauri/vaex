@@ -43,6 +43,11 @@ class Axis(traitlets.HasTraits):
         # return not self.df.is_category(self.expression) and (self.min is None or self.max is None)
         return (self.min is None or self.max is None)
 
+    def calculate_limits(self):
+        """Force the calculation of min and max"""
+        self._calculate_limits()
+        self.df.execute()
+
     def _calculate_limits(self):
         categorical = self.df.is_category(self.expression)
         if categorical:
@@ -154,7 +159,7 @@ class DataArray(traitlets.HasTraits):
     @vaex.jupyter.debounced(method=True, delay_seconds=0.3)
     def calculate_limits(self, only_dirty=False):
         # TODO: we'd like to do this delayed (in 1 pass)
-        axes = self.axes
+        axes = [axis for axis in self.axes if axis.has_missing_limit]
         if only_dirty:
             axes = self._dirty_axes.copy()
         tasks = []
