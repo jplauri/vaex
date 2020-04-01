@@ -34,7 +34,7 @@ class DataFrameAccessorWidget(object):
         import vaex.jupyter.model
         import vaex.jupyter.view
         selections = selections.copy()
-        model = vaex.jupyter.model.DataArrayModel(df=self.df, axes=axes, selections=selections, **kwargs)
+        model = vaex.jupyter.model.DataArray(df=self.df, axes=axes, selections=selections, **kwargs)
         if shared:
             grid = self.grid
         else:

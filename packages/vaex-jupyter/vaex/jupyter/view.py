@@ -95,7 +95,7 @@ class ViewBase(v.Container):
 
 
 class DataArray(ViewBase):
-    model = traitlets.Instance(model.DataArrayModel)
+    model = traitlets.Instance(model.DataArray)
     display_function = traitlets.Any(display)
     matplotlib_autoshow = traitlets.Bool(True)
 

@@ -81,7 +81,7 @@ class Axis(traitlets.HasTraits):
 
 
 @signature_has_traits
-class DataArrayModel(traitlets.HasTraits):
+class DataArray(traitlets.HasTraits):
     class Status(enum.Enum):
         MISSING_LIMITS = 1
         CALCULATING_LIMITS = 2
@@ -98,7 +98,7 @@ class DataArrayModel(traitlets.HasTraits):
         [traitlets.Bool(), traitlets.Unicode(allow_none=True)]), [None])
 
     def __init__(self, **kwargs):
-        super(DataArrayModel, self).__init__(**kwargs)
+        super(DataArray, self).__init__(**kwargs)
         self.signal_slice = vaex.events.Signal()
         self.signal_regrid = vaex.events.Signal()
         self.signal_grid_progress = vaex.events.Signal()
@@ -135,10 +135,10 @@ class DataArrayModel(traitlets.HasTraits):
             return ", ".join([str(axis.expression) for axis in axes])
 
         if missing_limits:
-            self.status = DataArrayModel.Status.MISSING_LIMITS
+            self.status = DataArray.Status.MISSING_LIMITS
             self.status_text = 'Missing limits for {}'.format(names(missing_limits))
         elif calculating_limits:
-            self.status = DataArrayModel.Status.CALCULATING_LIMITS
+            self.status = DataArray.Status.CALCULATING_LIMITS
             self.status_text = 'Computing limits for {}'.format(names(calculating_limits))
         else:
             assert all([axis.status == Axis.Status.READY for axis in self.axes])
@@ -178,16 +178,16 @@ class DataArrayModel(traitlets.HasTraits):
         self.signal_regrid.emit(None)
 
     def _prepare_regrid(self):
-        self.status = DataArrayModel.Status.CALCULATING_GRID
+        self.status = DataArray.Status.CALCULATING_GRID
         self.status_text = 'Aggregating data'
 
     @traitlets.observe('grid')
     def _on_change_grid(self, change):
-        self.status = DataArrayModel.Status.READY
+        self.status = DataArray.Status.READY
         self.status_text = 'Ready'
 
 
-class Histogram(DataArrayModel):
+class Histogram(DataArray):
     x = traitlets.Instance(Axis)
     # type = traitlets.CaselessStrEnum(['count', 'min', 'max', 'mean'], default_value='count')
     # groupby = traitlets.Instance(Axis)
@@ -200,7 +200,7 @@ class Histogram(DataArrayModel):
         super().__init__(**kwargs)
 
 
-class Heatmap(DataArrayModel):
+class Heatmap(DataArray):
     x = traitlets.Instance(Axis)
     y = traitlets.Instance(Axis)
 
