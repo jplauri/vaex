@@ -1,4 +1,5 @@
 from __future__ import absolute_import
+import sys
 import vaex.ml
 import traitlets
 import ipywidgets as widgets
@@ -96,6 +97,7 @@ class ViewBase(v.Container):
 class DataArray(ViewBase):
     model = traitlets.Instance(model.DataArrayModel)
     display_function = traitlets.Any(display)
+    matplotlib_autoshow = traitlets.Bool(True)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -112,6 +114,11 @@ class DataArray(ViewBase):
             if grid is None:
                 grid = self.model.grid
             self.display_function(grid)
+            # make sure show is called inside the output widget
+            if self.matplotlib_autoshow and 'matplotlib' in sys.modules:
+                import matplotlib.pyplot as plt
+                if plt.get_fignums():
+                    plt.show()
 
 
 class Heatmap(ViewBase):
