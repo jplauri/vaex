@@ -110,7 +110,7 @@ class PlotTemplate(v.VuetifyTemplate):
 @component('vaex-counter')
 class Counter(v.VuetifyTemplate):
     characters = traitlets.List(traitlets.Unicode()).tag(sync=True)
-    value = traitlets.Integer()
+    value = traitlets.Integer(None, allow_none=True)
     format = traitlets.Unicode('{: 14,d}')
     prefix = traitlets.Unicode('').tag(sync=True)
     postfix = traitlets.Unicode('').tag(sync=True)
