@@ -2,7 +2,7 @@
 import os
 import logging
 import time
-from .utils import debounced, interactive_selection, interactive_cleanup  # noqa
+from .utils import debounced, flush, gather, kernel_tick, interactive_selection, interactive_cleanup  # noqa
 import vaex
 import IPython.display
 

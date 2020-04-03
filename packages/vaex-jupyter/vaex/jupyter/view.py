@@ -58,10 +58,7 @@ class ViewBase(v.Container):
         try:
             with self.output:
                 self.progress_indicator.hidden = False
-                import IPython
-                ipython = IPython.get_ipython()
-                if ipython is not None:  # for testing
-                    ipython.kernel.do_one_iteration()
+                vaex.jupyter.kernel_tick()
                 self.progress_indicator.value = fraction * 100
                 if fraction == 1:
                     self.hide_progress()
