@@ -135,9 +135,11 @@ class Executor(object):
                 logger.info("only had cancelled tasks")
             logger.info("clearing queue")
             # self.task_queue = [] # Ok, this was stupid.. in the meantime there may have been new tasks, instead, remove the ones we copied
+            self._tasks_processing = []
             for task in task_queue_all:
                 logger.info("remove from queue: %r", task)
                 self.task_queue.remove(task)
+                self._tasks_processing.append(task)
             logger.info("left in queue: %r", self.task_queue)
             task_queue_all = [task for task in task_queue_all if not task.cancelled]
             # logger.debug("executing queue: %r" % (task_queue_all))
@@ -247,6 +249,7 @@ class Executor(object):
                         parts = task._parts
                         parts[0].reduce(parts[1:])
                         task._result = parts[0].get_result()
+                        task.end()
                         task.fulfill(task._result)
                     else:
                         task.reject(UserAbort("cancelled"))
