@@ -321,6 +321,11 @@ class Expression(with_metaclass(Meta)):
     def __len__(self):
         return len(self.ds)
 
+    @nep18_method(np.unique)
+    def _np_unique(self, axis=None):
+        assert axis is None
+        return self.unique()
+
     @nep18_method(np.zeros_like)
     def _zeros_like(self):
         return Expression(self.ds, '(0 * (%s))' % self.expression)
@@ -335,11 +340,18 @@ class Expression(with_metaclass(Meta)):
         assert axis in [0, None]
         return self.max(delay=delay)
 
+    @nep18_method(np.searchsorted)
+    def _np_searchsorted(a, v):
+        if isinstance(a, Expression):
+            self = a
+        if isinstance(v, Expression):
+            self = v
+        return self.df.func.searchsorted(a, v)
+
     def __array_function__(self, func, types, args, kwargs):
         method = _nep18_method_mapping.get(func)
         if method is None:
             return NotImplemented
-        assert args[0] is self
         return method(*args, **kwargs)
 
     def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
@@ -362,13 +374,19 @@ class Expression(with_metaclass(Meta)):
 
     @nep13_method(np.nansum)
     @nep18_method(np.nansum)
-    def nansum(self, axis=None, delay=False):
+    def _np_nansum(self, axis=None, delay=False):
         assert axis in [0, None]
         # TODO: smarter upcasting
         if self.dtype == np.bool:
             return self.astype('int64').sum(delay=delay)
         else:
             return self.sum(delay=delay)
+
+    @nep13_method(np.nanpercentile)
+    @nep18_method(np.nanpercentile)
+    def _np_nanpercentile(self, q, axis=None, delay=False):
+        assert axis in [0, None]
+        return self.df.percentile_approx(self.expression, q)
 
     def __getitem__(self, slice):
         if isinstance(slice, tuple):

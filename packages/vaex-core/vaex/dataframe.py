@@ -4503,6 +4503,8 @@ class DataFrame(object):
                 return
             if isinstance(item[1], int):
                 name = self.get_column_names()[item[1]]
+            elif isinstance(item[1], str):
+                name = item[1]
             if isinstance(value, (int, float)):
                 self[name] = self[name] * 0 + value
             else:

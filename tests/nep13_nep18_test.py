@@ -133,6 +133,17 @@ def test_binary_df_out(df):
     assert np.array(df3.T).tolist() == A3.T.tolist()
 
 
+def test_clip(df):
+    X = np.array(df)
+    Xc = np.clip(X, 0, 4)
+    c = np.clip(df.numpy, 0, 4)
+    assert Xc.tolist() == np.array(c).tolist()
+
+    Xc = np.clip(X, 0, [4, 10])
+    c = np.clip(df.numpy, 0, [4, 10], out=df)
+    assert Xc.tolist() == np.array(c).tolist()
+
+
 def test_aggregates(df):
     A = np.array(df)
     a = np.nanmax(A)
@@ -292,19 +303,21 @@ def test_quantile_transformer(df, output_distribution):
     np.testing.assert_array_almost_equal(Xt, np.array(dft), decimal=3)
 
 
-@pytest.mark.skip(reason='not supported yet')
 @pytest.mark.parametrize("n_bins", [2, 3])
-@pytest.mark.parametrize("encode", ['ordinal', 'onehot-dense'])
-@pytest.mark.parametrize("strategy", ['uniform', 'quantile', 'kmeans'])
+# @pytest.mark.parametrize("encode", ['ordinal', 'onehot-dense'])
+@pytest.mark.parametrize("encode", ['ordinal'])
+# @pytest.mark.parametrize("strategy", ['uniform', 'quantile', 'kmeans'])
+@pytest.mark.parametrize("strategy", ['uniform'])
 def test_kbins_discretizer(df, n_bins, encode, strategy):
     with sklearn_patch(), df.array_casting_disabled():
         trans = sklearn.preprocessing.KBinsDiscretizer(n_bins=n_bins, encode=encode, strategy=strategy)
-        dft = trans.fit_transform(df)
-        assert isinstance(dft, vaex.DataFrame)
+        dft = trans.fit_transform(df.numpy)
+        # assert isinstance(dft, vaex.DataFrame)
 
     trans_sklearn = sklearn.preprocessing.KBinsDiscretizer(n_bins=n_bins, encode=encode, strategy=strategy)
     X = np.array(df)
     Xt = trans_sklearn.fit_transform(X)
+    dft._allow_array_casting = True
     np.testing.assert_array_almost_equal(Xt, np.array(dft), decimal=3)
 
 @pytest.mark.parametrize("n_components", [1, 2])

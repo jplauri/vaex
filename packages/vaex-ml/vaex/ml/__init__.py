@@ -282,10 +282,12 @@ def sklearn_patch():
         if hasattr(module, 'check_array'):
             previous_check_arrays[module] = module.check_array
             module.check_array = dummy
-    yield
-    for method in methods:
-        method.__code__ = method._old_code
-        delattr(method, '_old_code')
-    sklearn.decomposition._pca.linalg = pca_linalg
-    for module, check_array in previous_check_arrays.items():
-       module.check_array = previous_check_arrays[module]
+    try:
+        yield
+    finally:
+        for method in methods:
+            method.__code__ = method._old_code
+            delattr(method, '_old_code')
+        sklearn.decomposition._pca.linalg = pca_linalg
+        for module, check_array in previous_check_arrays.items():
+            module.check_array = previous_check_arrays[module]

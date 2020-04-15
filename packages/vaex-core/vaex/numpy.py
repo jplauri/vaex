@@ -75,7 +75,7 @@ class DataFrameAccessorNumpy:
             if row != slice(None, None, None):
                 raise ValueError("Please don't slice on row basis")
             if isinstance(col, int):
-                column_names = [self.column_names[col]]
+                return self._df[self.column_names[col]]
             elif isinstance(col, slice):
                 column_names = self.column_names.__getitem__(col)
             elif isinstance(col, (list, tuple)):
@@ -83,6 +83,11 @@ class DataFrameAccessorNumpy:
             return DataFrameAccessorNumpy(self._df, self._transposed, column_names)
         elif isinstance(item, slice):
             return self[item, :]
+        if isinstance(item, int):
+            if self._transposed:
+                return self[:, item]
+            else:
+                raise ValueError(f'Cannot get row {item}, only getting columns is supported')
         elif isinstance(item, str):
             return self._df[item]
         else:
@@ -94,7 +99,7 @@ class DataFrameAccessorNumpy:
             if row != slice(None, None, None):
                 raise ValueError("Please don't slice on row basis")
             if isinstance(col, int):
-                column_names = [self.column_names[col]]
+                column_names = self.column_names[col]
             elif isinstance(col, slice):
                 column_names = self.column_names.__getitem__(col)
             elif isinstance(col, (list, tuple)):
@@ -159,22 +164,47 @@ class DataFrameAccessorNumpy:
 
 
     @nep18_method(np.empty_like)
-    def empty_like(self, dtype=None, order='K', subok=True, shape=None):
+    def _np_full_like(self, value, dtype=None, order='K', subok=True, shape=None):
         # we ignore order
         if shape is None:
             shape = self.shape
         assert subok
-        assert dtype in [None, self.dtype]
+        # assert dtype in [None, self.dtype]
+        if dtype is None:
+            dtype = self.dtype
         rows, columns = shape
         # TODO: instead of vrange, we might want to have a vaex.zeros
         vcol = vaex.vrange(0, rows, dtype=dtype)
         df = vaex.from_dict({f'c{i}': vcol for i in range(columns)})
+        if value:
+            for name in df:
+                df[name] = df[name] * 0 + value
         return df.numpy
+
+    @nep18_method(np.empty_like)
+    def _np_empty_like(self, dtype=None, order='K', subok=True, shape=None):
+        return self._np_full_like(0, dtype, order, subok, shape)
+
+    @nep18_method(np.zeros_like)
+    def _np_zeros_like(self, dtype=None, order='K', subok=True, shape=None):
+        return self._np_full_like(0, dtype, order, subok, shape)
+
+    @nep18_method(np.ones_like)
+    def _np_ones_like(self, dtype=None, order='K', subok=True, shape=None):
+        return self._np_full_like(1, dtype, order, subok, shape)
 
     @nep18_method(np.mean)
     def _np_mean(self, axis=None):
         assert axis in [0, None]
         return self.mean(self.get_column_names())
+
+    @nep18_method(np.unique)
+    def _np_unique(self, axis=None):
+        assert axis is None
+        import pdb; pdb.set_trace()
+        # assert axis in [0, None]
+        # if axis is None:
+        # return self.mean(self.get_column_names())
 
     @nep18_method(np.dot)
     def _dot(self, b):
@@ -195,7 +225,7 @@ class DataFrameAccessorNumpy:
         return df.numpy
 
     @nep18_method(np.may_share_memory)
-    def _may_share_memory(self, b):
+    def _np__may_share_memory(self, b):
         return True  # be conservative
 
     @nep18_method(np.linalg.svd)
@@ -348,8 +378,38 @@ for name, numpy_name in vaex.functions.numpy_function_mapping + [('isnan', 'isna
                 df = self
                 self = df.numpy
             df = df.copy()
-            for name in df.get_column_names():
-                df[name] = numpy_function(df[name], *args, **kwargs)
+            out = None
+            if 'out' in kwargs:
+                out = kwargs.pop('out')
+            print(numpy_function, args, kwargs)
+            if numpy_function == np.clip:
+                # TODO: can we copy something from numpy here?
+                args = [np.array(arg) if isinstance(arg, (tuple, list)) else arg for arg in args]
+                broadcast_arg = [isinstance(arg, np.ndarray) for arg in args]
+                # args_copy = args.copy()
+                for i, name in enumerate(df.get_column_names()):
+                    broadcasted_args = [arg[i] if broadcast else arg for arg, broadcast in zip(args, broadcast_arg)]
+                    df[name] = numpy_function(df[name], *broadcasted_args, **kwargs)
+                # import pdb; pdb.set_trace()
+            else:
+                for name in df.get_column_names():
+                    df[name] = numpy_function(df[name], *args, **kwargs)
+            if isinstance(out, tuple):
+                assert len(out) == 1, "unexpected length of tuple of out argument"
+                out = out[0]
+            if out is not None:
+                # import pdb; pdb.set_trace()
+                assert isinstance(out, (vaex.dataframe.DataFrame, DataFrameAccessorNumpy)),\
+                    'only output to dataframe or numpy accessor supported, not %r' % out
+                if isinstance(out, DataFrameAccessorNumpy):
+                    names_left = out.column_names
+                    out = out._df
+                else:
+                    names_left = out.get_column_names()
+                out[:, names_left] = df
+                df = out
+                out[:, names_left] = df
+                df = out
             if self._transposed:
                 return df.T
             else:
