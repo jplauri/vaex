@@ -4787,38 +4787,6 @@ class DataFrame(object):
             self[column]._graphviz(dot=dot)
         return dot
 
-# we forward binary and unary operators to numpy, which will be dispatched to
-# the nep13/nep18 handlers
-for op in vaex.expression._binary_ops:
-    name = op['name']
-    numpy_name = op.get('numpy_name', name)
-    # TODO: decide what to do with equals
-    if name in ['contains', 'is', 'is_not', 'eq']:
-        continue
-    numpy_function = getattr(np, numpy_name)
-    assert numpy_function, 'numpy does not have {}'.format(numpy_name)
-    def closure(numpy_function=numpy_function, numpy_name=numpy_name):
-        def f(a, b):
-            return numpy_function(a.numpy, b)
-        return f
-
-    dundername = '__{}__'.format(name)
-    setattr(DataFrame, dundername, closure())
-
-
-for op in vaex.expression._unary_ops:
-    name = op['name']
-    numpy_name = op.get('numpy_name', name)
-    numpy_function = getattr(np, numpy_name)
-    assert numpy_function, 'numpy does not have {}'.format(name)
-    def closure(numpy_function=numpy_function):
-        def f(a):
-            return numpy_function(a)
-        return f
-
-    dundername = '__{}__'.format(name)
-    setattr(DataFrame, dundername, closure())
-
     def _get_task_agg(self, grid):
         new_task = False
         with self.executor.lock:
@@ -4901,6 +4869,39 @@ for op in vaex.expression._unary_ops:
         def finish(*binners):
             return self._grid(binners)
         return self._delay(delay, finish(*binners))
+
+# we forward binary and unary operators to numpy, which will be dispatched to
+# the nep13/nep18 handlers
+for op in vaex.expression._binary_ops:
+    name = op['name']
+    numpy_name = op.get('numpy_name', name)
+    # TODO: decide what to do with equals
+    if name in ['contains', 'is', 'is_not', 'eq']:
+        continue
+    numpy_function = getattr(np, numpy_name)
+    assert numpy_function, 'numpy does not have {}'.format(numpy_name)
+    def closure(numpy_function=numpy_function, numpy_name=numpy_name):
+        def f(a, b):
+            return numpy_function(a.numpy, b)
+        return f
+
+    dundername = '__{}__'.format(name)
+    setattr(DataFrame, dundername, closure())
+
+
+for op in vaex.expression._unary_ops:
+    name = op['name']
+    numpy_name = op.get('numpy_name', name)
+    numpy_function = getattr(np, numpy_name)
+    assert numpy_function, 'numpy does not have {}'.format(name)
+    def closure(numpy_function=numpy_function):
+        def f(a):
+            return numpy_function(a)
+        return f
+
+    dundername = '__{}__'.format(name)
+    setattr(DataFrame, dundername, closure())
+
 
 DataFrame.__hidden__ = {}
 hidden = [name for name, func in vars(DataFrame).items() if getattr(func, '__hidden__', False)]
