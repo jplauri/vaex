@@ -12,7 +12,7 @@ import sklearn.decomposition.pca
 import numpy.linalg
 import dask
 import dask.array as da
-from vaex.ml import relax_sklearn_check
+from vaex.ml import sklearn_patch
 
 
 @pytest.fixture
@@ -188,7 +188,7 @@ def test_dot(df):
     assert np.all(Y[:,1] == y)
 
     # not repeat with vaex
-    with relax_sklearn_check(), df.array_casting_disabled():
+    with sklearn_patch(), df.array_casting_disabled():
         df_dot = np.dot(df, [[1, 0], [0, 1]])
     df_dot._allow_array_casting = True
     Yv = np.array(df_dot)
@@ -200,7 +200,7 @@ def test_dot(df):
     assert np.all(Y[:, 0] == x - y)
     assert np.all(Y[:, 1] == y + x)
 
-    with relax_sklearn_check(), df.array_casting_disabled():
+    with sklearn_patch(), df.array_casting_disabled():
         df_dot = np.dot(df, [[1, 1], [-1, 1]])
     df_dot._allow_array_casting = True
     Yv = np.array(df_dot)
@@ -211,7 +211,7 @@ def test_dot(df):
     Y = X.dot([[1], [-1]])
     assert np.all(Y[:,0] == x - y)
 
-    with relax_sklearn_check(), df.array_casting_disabled():
+    with sklearn_patch(), df.array_casting_disabled():
         df_dot = np.dot(df, [[1], [-1]])
     df_dot._allow_array_casting = True
     Yv = np.array(df_dot)
@@ -221,7 +221,7 @@ def test_dot(df):
 
 def test_sklearn_min_max_scalar(df):
     from sklearn.preprocessing import MinMaxScaler
-    with relax_sklearn_check(), df.array_casting_disabled():
+    with sklearn_patch(), df.array_casting_disabled():
         scaler = MinMaxScaler()
         scaler.fit(df)
 
@@ -235,7 +235,7 @@ def test_sklearn_min_max_scalar(df):
 
 def test_sklearn_standard_scaler(df):
     from sklearn.preprocessing import StandardScaler
-    with relax_sklearn_check(), df.array_casting_disabled():
+    with sklearn_patch(), df.array_casting_disabled():
         scaler = StandardScaler()
         scaler.fit(df)
 
@@ -251,7 +251,7 @@ def test_sklearn_standard_scaler(df):
 @pytest.mark.parametrize("method", ['yeo-johnson', 'box-cox'])
 def est_sklearn_power_transformer(df, standardize, method):
     from sklearn.preprocessing import PowerTransformer
-    with relax_sklearn_check(), df.array_casting_disabled():
+    with sklearn_patch(), df.array_casting_disabled():
         power_trans_vaex = PowerTransformer(standardize=standardize, method=method, copy=True)
         dft = power_trans_vaex.fit_transform(df)
         assert isinstance(dft, vaex.DataFrame)
@@ -267,7 +267,7 @@ def est_sklearn_power_transformer(df, standardize, method):
 @pytest.mark.parametrize("interaction_only", [True, False])
 @pytest.mark.parametrize("include_bias", [True, False])
 def test_polynomial_transformer(df, degree, interaction_only, include_bias):
-    with relax_sklearn_check(), df.array_casting_disabled():
+    with sklearn_patch(), df.array_casting_disabled():
         poly_trans_vaex = sklearn.preprocessing.PolynomialFeatures(degree=degree, interaction_only=interaction_only, include_bias=include_bias)
         dft = poly_trans_vaex.fit_transform(df.numpy)
         assert isinstance(dft, vaex.numpy.DataFrameAccessorNumpy)
@@ -281,7 +281,7 @@ def test_polynomial_transformer(df, degree, interaction_only, include_bias):
 @pytest.mark.skip(reason='not supported yet')
 @pytest.mark.parametrize("output_distribution", ['uniform', 'normal'])
 def test_quantile_transformer(df, output_distribution):
-    with relax_sklearn_check(), df.array_casting_disabled():
+    with sklearn_patch(), df.array_casting_disabled():
         quant_trans_vaex = sklearn.preprocessing.QuantileTransformer(n_quantiles=5, random_state=42, output_distribution=output_distribution)
         dft = quant_trans_vaex.fit_transform(df)
         assert isinstance(dft, vaex.DataFrame)
@@ -297,7 +297,7 @@ def test_quantile_transformer(df, output_distribution):
 @pytest.mark.parametrize("encode", ['ordinal', 'onehot-dense'])
 @pytest.mark.parametrize("strategy", ['uniform', 'quantile', 'kmeans'])
 def test_kbins_discretizer(df, n_bins, encode, strategy):
-    with relax_sklearn_check(), df.array_casting_disabled():
+    with sklearn_patch(), df.array_casting_disabled():
         trans = sklearn.preprocessing.KBinsDiscretizer(n_bins=n_bins, encode=encode, strategy=strategy)
         dft = trans.fit_transform(df)
         assert isinstance(dft, vaex.DataFrame)
@@ -312,7 +312,7 @@ def test_kbins_discretizer(df, n_bins, encode, strategy):
 @pytest.mark.parametrize("svd_solver", ['full'])
 def test_sklearn_pca(df, n_components, svd_solver):
     from sklearn.decomposition import PCA
-    with relax_sklearn_check(), df.array_casting_disabled():
+    with sklearn_patch(), df.array_casting_disabled():
         pca_vaex = PCA(n_components=n_components, random_state=42, svd_solver=svd_solver)
         dft = pca_vaex.fit_transform(df)
 
