@@ -542,7 +542,7 @@ class DatasetRest(DataFrameRemote):
         self.executor = ServerExecutor()
 
     def copy(self, column_names=None, virtual=True):
-        dtypes = {name: self.dtype_evaluate(name) for name in self.get_column_names(strings=True, virtual=False)}
+        dtypes = {name: self.data_type(name) for name in self.get_column_names(strings=True, virtual=False)}
         ds = DatasetRest(self.server, self.name, self.column_names, dtypes=dtypes, length_original=self._length_original)
         state = self.state_get()
         if not virtual:
@@ -592,7 +592,7 @@ class DatasetRest(DataFrameRemote):
             logger.debug("result = %r", result)
             return result
 
-    def dtype_evaluate(self, expression):
+    def data_type(self, expression):
         if expression in self._dtypes:
             return self._dtypes[expression]
         else:

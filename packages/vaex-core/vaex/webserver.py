@@ -368,7 +368,7 @@ def process(webserver, user_id, path, fraction=None, progress=None, **arguments)
                 response = dict(result=[{'name': ds.name,
                                          'length_original': ds.length_original(),
                                          'column_names': ds.get_column_names(strings=True),
-                                         'dtypes': {name: str("str" if ds.dtype_evaluate(name) == vaex.column.str_type else ds.dtype_evaluate(name)) for name in ds.get_column_names(strings=True)},
+                                         'dtypes': {name: str("str" if ds.data_type(name) == vaex.column.str_type else ds.data_type(name)) for name in ds.get_column_names(strings=True)},
                                          'state': ds.state_get()
                                          } for ds in webserver.datasets])
                 logger.debug("response: %r", response)
@@ -468,7 +468,7 @@ def process(webserver, user_id, path, fraction=None, progress=None, **arguments)
                                 result = task_invoke(dataset, method_name, **arguments)
                                 # evaluating a string results in dtype = object, but that is difficult
                                 # to (de)serialize, better would be to serialize the arrow arrays
-                                if dataset.dtype_evaluate(arguments['expression']) == vaex.column.str_type:
+                                if dataset.data_type(arguments['expression']) == vaex.column.str_type:
                                     result = result.astype(vaex.column.str_type)
                                 return result
                             elif method_name in allowed_method_names:

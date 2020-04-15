@@ -6,6 +6,7 @@
      * DataFrame uses a normal dict instead of OrderedDict, requiring Python >= 3.6
      * Default limits (e.g. for plots) is minmax, so we don't miss outliers
      * df.get_column_names() returns the aliased names (invalid identifiers), pass alias=False to get the internal column name
+     * df.dtype is a property, to get data types for expressions, use df.data_type(), df.expr.dtype is still behaving the same
 
 # vaex-core 2.0.0-dev
    * Performance

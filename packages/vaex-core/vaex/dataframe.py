@@ -284,7 +284,7 @@ class DataFrame(object):
         return self.is_category(column)
 
     def is_datetime(self, expression):
-        dtype = self.dtype_evaluate(expression)
+        dtype = self.data_type(expression)
         return dtype != str_type and dtype.kind == 'M'
 
     def is_category(self, column):
@@ -374,13 +374,13 @@ class DataFrame(object):
         from vaex.column import _to_string_sequence
 
         transient = self[str(expression)].transient or self.filtered or self.is_masked(expression)
-        if self.dtype_evaluate(expression) == str_type and not transient:
+        if self.data_type(expression) == str_type and not transient:
             # string is a special case, only ColumnString are not transient
             ar = self.columns[str(expression)]
             if not isinstance(ar, ColumnString):
                 transient = True
 
-        dtype = self.dtype_evaluate(column)
+        dtype = self.data_type(column)
         ordered_set_type = ordered_set_type_from_dtype(dtype, transient)
         sets = [None] * self.executor.thread_pool.nthreads
         def map(thread_index, i1, i2, ar):
@@ -412,13 +412,13 @@ class DataFrame(object):
         from vaex.column import _to_string_sequence
 
         transient = self[str(expression)].transient or self.filtered or self.is_masked(expression)
-        if self.dtype_evaluate(expression) == str_type and not transient:
+        if self.data_type(expression) == str_type and not transient:
             # string is a special case, only ColumnString are not transient
             ar = self.columns[str(expression)]
             if not isinstance(ar, ColumnString):
                 transient = True
 
-        dtype = self.dtype_evaluate(column)
+        dtype = self.data_type(column)
         index_type = index_type_from_dtype(dtype, transient)
         index_list = [None] * self.executor.thread_pool.nthreads
         def map(thread_index, i1, i2, ar):
@@ -453,7 +453,7 @@ class DataFrame(object):
         if return_inverse:
             # inverse type can be smaller, depending on length of set
             inverse = np.zeros(self._length_unfiltered, dtype=np.int64)
-            dtype = self.dtype_evaluate(expression)
+            dtype = self.data_type(expression)
             from vaex.column import _to_string_sequence
             def map(thread_index, i1, i2, ar):
                 if dtype == str_type:
@@ -1205,7 +1205,7 @@ class DataFrame(object):
         expression = _ensure_strings_from_expressions(expression)
         binby = _ensure_strings_from_expressions(binby)
         waslist, [expressions, ] = vaex.utils.listify(expression)
-        dtypes = [self.dtype_evaluate(expr) for expr in expressions]
+        dtypes = [self.data_type(expr) for expr in expressions]
         dtype0 = dtypes[0]
         if not all([k.kind == dtype0.kind for k in dtypes]):
             raise ValueError("cannot mix datetime and non-datetime expressions")
@@ -1961,8 +1961,8 @@ class DataFrame(object):
         N = self.count(selection=selection)
         extra = 0
         for column in list(self.get_column_names(virtual=virtual)):
-            dtype = self.dtype_evaluate(column)
-            dtype_internal = self.dtype_evaluate(column, internal=True)
+            dtype = self.data_type(column)
+            dtype_internal = self.data_type(column, internal=True)
             #if dtype in [str_type, str] and dtype_internal.kind == 'O':
             if isinstance(self.columns[column], ColumnString):
                 # TODO: document or fix this
@@ -1984,7 +1984,7 @@ class DataFrame(object):
         rows = len(self) if filtered else self.length_unfiltered()
         return (rows,) + sample.shape[1:]
 
-    def dtype_evaluate(self, expression, internal=False):
+    def data_type(self, expression, internal=False):
         """Return the numpy dtype for the given expression, if not a column, the first row will be evaluated to get the dtype."""
         expression = _ensure_string_from_expression(expression)
         if expression in self._dtypes_override:
@@ -2014,7 +2014,7 @@ class DataFrame(object):
     def dtypes(self):
         """Gives a Pandas series object containing all numpy dtypes of all columns (except hidden)."""
         from pandas import Series
-        return Series({column_name:self.dtype_evaluate(column_name) for column_name in self.get_column_names()})
+        return Series({column_name:self.data_type(column_name) for column_name in self.get_column_names()})
 
     def is_masked(self, column):
         '''Return if a column is a masked (numpy.ma) column.'''
@@ -2838,7 +2838,7 @@ class DataFrame(object):
 
         table = Table(meta=meta)
         for name, data in self.to_items(column_names=column_names, selection=selection, strings=strings, virtual=virtual, parallel=parallel):
-            if self.dtype_evaluate(name) == str_type:  # for astropy we convert it to unicode, it seems to ignore object type
+            if self.data_type(name) == str_type:  # for astropy we convert it to unicode, it seems to ignore object type
                 data = np.array(data).astype('U')
             meta = dict()
             if name in self.ucds:
@@ -3289,7 +3289,6 @@ class DataFrame(object):
         return new_name
 
     def _rename(self, old, new, rename_meta_data=False):
-        print("rename", old, new)
         if old in self._dtypes_override:
             self._dtypes_override[new] = self._dtypes_override.pop(old)
         is_variable = False
@@ -3387,7 +3386,7 @@ class DataFrame(object):
             parts += ["<td>%s</td>" % name]
             virtual = name not in self.column_names
             if name in self.column_names:
-                dtype = str(self.dtype_evaluate(name)) if self.dtype_evaluate(name) != str else 'str'
+                dtype = str(self.data_type(name)) if self.data_type(name) != str else 'str'
             else:
                 dtype = "</i>virtual column</i>"
             parts += ["<td>%s</td>" % dtype]
@@ -3416,7 +3415,7 @@ class DataFrame(object):
             for name in variable_names:
                 parts += ["<tr>"]
                 parts += ["<td>%s</td>" % name]
-                type = self.dtype_evaluate(name).name
+                type = self.data_type(name).name
                 parts += ["<td>%s</td>" % type]
                 units = self.unit(name)
                 units = units.to_string("latex_inline") if units else ""
@@ -3485,13 +3484,13 @@ class DataFrame(object):
         N = len(self)
         columns = {}
         for feature in self.get_column_names(strings=strings, virtual=virtual)[:]:
-            dtype = str(self.dtype_evaluate(feature)) if self.dtype_evaluate(feature) != str else 'str'
-            if self.dtype_evaluate(feature) == str_type or self.dtype_evaluate(feature).kind in ['S', 'U']:
+            dtype = str(self.data_type(feature)) if self.data_type(feature) != str else 'str'
+            if self.data_type(feature) == str_type or self.data_type(feature).kind in ['S', 'U']:
                 count = self.count(feature, selection=selection, delay=True)
                 self.execute()
                 count = count.get()
                 columns[feature] = ((dtype, count, N-count, '--', '--', '--', '--'))
-            elif self.dtype_evaluate(feature).kind == 'O':
+            elif self.data_type(feature).kind == 'O':
                 # this will also properly count NaN-like objects like NaT
                 count_na = self[feature].isna().astype('int').sum(delay=True)
                 self.execute()
@@ -3745,7 +3744,7 @@ class DataFrame(object):
                 return False
             if not virtual and name in self.virtual_columns:
                 return False
-            if not strings and (self.dtype_evaluate(name) == str_type or self.dtype_evaluate(name).type == np.string_):
+            if not strings and (self.data_type(name) == str_type or self.data_type(name).type == np.string_):
                 return False
             if not hidden and name.startswith('__'):
                 return False
@@ -4842,12 +4841,12 @@ class DataFrame(object):
             return grid
 
     def _binner_scalar(self, expression, limits, shape):
-        type = vaex.utils.find_type_from_dtype(vaex.superagg, "BinnerScalar_", self.dtype_evaluate(expression))
+        type = vaex.utils.find_type_from_dtype(vaex.superagg, "BinnerScalar_", self.data_type(expression))
         vmin, vmax = limits
         return type(expression, vmin, vmax, shape)
 
     def _binner_ordinal(self, expression, ordinal_count, min_value=0):
-        type = vaex.utils.find_type_from_dtype(vaex.superagg, "BinnerOrdinal_", self.dtype_evaluate(expression))
+        type = vaex.utils.find_type_from_dtype(vaex.superagg, "BinnerOrdinal_", self.data_type(expression))
         return type(expression, ordinal_count, min_value)
 
     def _create_grid(self, binby, limits, shape, delay=False):
@@ -5254,9 +5253,9 @@ class DataFrameLocal(DataFrame):
         chunks = []
         column_names = self.get_column_names(strings=False)
         for name in column_names:
-            if not np.can_cast(self.dtype_evaluate(name), dtype):
-                if self.dtype_evaluate(name) != dtype:
-                    raise ValueError("Cannot cast %r (of type %r) to %r" % (name, self.dtype_evaluate(name), dtype))
+            if not np.can_cast(self.data_type(name), dtype):
+                if self.data_type(name) != dtype:
+                    raise ValueError("Cannot cast %r (of type %r) to %r" % (name, self.data_type(name), dtype))
         chunks = self.evaluate(column_names, parallel=parallel)
         if any(np.ma.isMaskedArray(chunk) for chunk in chunks):
             return np.ma.array(chunks, dtype=dtype).T
@@ -5403,7 +5402,7 @@ class DataFrameLocal(DataFrame):
             virtual = set()
 
             for expression in set(expressions):
-                dtypes[expression] = df.dtype_evaluate(expression, internal=False)
+                dtypes[expression] = df.data_type(expression, internal=False)
                 # dsa
                 if expression not in df.columns:
                     virtual.add(expression)
@@ -5526,14 +5525,14 @@ class DataFrameLocal(DataFrame):
                 if unit1 != unit2:
                     print("unit mismatch : %r vs %r for %s" % (unit1, unit2, column_name))
                     meta_mismatch.append(column_name)
-                type1 = self.dtype_evaluate(column_name)
+                type1 = self.data_type(column_name)
                 if type1 != str_type:
                     type1 = type1.type
-                type2 = other.dtype_evaluate(column_name)
+                type2 = other.data_type(column_name)
                 if type2 != str_type:
                     type2 = type2.type
                 if type1 != type2:
-                    print("different dtypes: %s vs %s for %s" % (self.dtype_evaluate(column_name), other.dtype_evaluate(column_name), column_name))
+                    print("different dtypes: %s vs %s for %s" % (self.data_type(column_name), other.data_type(column_name), column_name))
                     type_mismatch.append(column_name)
                 else:
                     # a = self.columns[column_name]
@@ -5571,7 +5570,7 @@ class DataFrameLocal(DataFrame):
                         a = normalize(a)
                         b = normalize(b)
                         boolean_mask = (a == b)
-                        if self.dtype_evaluate(column_name) != str_type and self.dtype_evaluate(column_name).kind == 'f':  # floats with nan won't equal itself, i.e. NaN != NaN
+                        if self.data_type(column_name) != str_type and self.data_type(column_name).kind == 'f':  # floats with nan won't equal itself, i.e. NaN != NaN
                             boolean_mask |= (np.isnan(a) & np.isnan(b))
                         return boolean_mask
                     boolean_mask = equal_mask(a, b)
@@ -5666,7 +5665,7 @@ class DataFrameLocal(DataFrame):
             df = left
             # we index the right side, this assumes right is smaller in size
             index = right._index(right_on)
-            dtype = left.dtype_evaluate(left_on)
+            dtype = left.data_type(left_on)
             duplicates_right = index.has_duplicates
 
             if duplicates_right and not allow_duplication:
@@ -5874,7 +5873,7 @@ class DataFrameLocal(DataFrame):
               self.columns[column_name].dtype.type == np.float64 and
               self.columns[column_name].strides[0] == 8 and
               column_name not in
-              self.virtual_columns) or self.dtype_evaluate(column_name) == str_type or self.dtype_evaluate(column_name).kind == 'S')
+              self.virtual_columns) or self.data_type(column_name) == str_type or self.data_type(column_name).kind == 'S')
         # and False:
 
     def selected_length(self, selection="default"):
